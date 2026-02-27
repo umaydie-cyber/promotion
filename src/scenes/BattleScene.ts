@@ -63,12 +63,33 @@ export default class BattleScene extends Phaser.Scene {
 
     // ======== 生命周期 ========
     create() {
+        this.createPlaceholderAnimations();
+
+        const player = this.add.sprite(200, 280, "player_0").setScale(2).setDepth(5);
+        player.play("player_idle");
+
+        const enemy = this.add.sprite(760, 170, "enemy_0").setScale(2).setDepth(5);
+        enemy.play("enemy_idle");
+
         this.cameras.main.setBackgroundColor("#111827");
 
         this.setupDeck();
         this.setupUI();
 
         this.startPlayerTurn(true);
+        this.add.text(930, 10, "⛶", {
+            fontSize: "22px",
+            color: "#ffffff"
+        }).setOrigin(1, 0)
+            .setInteractive()
+            .on("pointerdown", () => {
+                if (this.scale.isFullscreen) {
+                    this.scale.stopFullscreen();
+                } else {
+                    this.scale.startFullscreen();
+                }
+            });
+
     }
 
     // ======== 初始化 ========
@@ -315,4 +336,45 @@ export default class BattleScene extends Phaser.Scene {
         const lines = next.split("\n").slice(-12);
         this.ui.logText?.setText(lines.join("\n"));
     }
+
+    private createPlaceholderAnimations() {
+        if (this.textures.exists("player_0")) return;
+
+        // 生成 4 帧：人物（绿色呼吸）
+        for (let i = 0; i < 4; i++) {
+            const g = this.add.graphics();
+            g.fillStyle(0x22c55e, 1);
+            g.fillCircle(32, 32, 18 + i);
+            g.lineStyle(4, 0x14532d, 1);
+            g.strokeCircle(32, 32, 18 + i);
+            g.generateTexture(`player_${i}`, 64, 64);
+            g.destroy();
+        }
+
+        // 生成 4 帧：怪物（红色抖动）
+        for (let i = 0; i < 4; i++) {
+            const g = this.add.graphics();
+            g.fillStyle(0xef4444, 1);
+            g.fillRoundedRect(10 - i, 14, 44 + i * 2, 40, 8);
+            g.lineStyle(4, 0x7f1d1d, 1);
+            g.strokeRoundedRect(10 - i, 14, 44 + i * 2, 40, 8);
+            g.generateTexture(`enemy_${i}`, 64, 64);
+            g.destroy();
+        }
+
+        this.anims.create({
+            key: "player_idle",
+            frames: [{ key: "player_0" }, { key: "player_1" }, { key: "player_2" }, { key: "player_3" }],
+            frameRate: 6,
+            repeat: -1,
+        });
+
+        this.anims.create({
+            key: "enemy_idle",
+            frames: [{ key: "enemy_0" }, { key: "enemy_1" }, { key: "enemy_2" }, { key: "enemy_3" }],
+            frameRate: 6,
+            repeat: -1,
+        });
+    }
+
 }

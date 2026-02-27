@@ -62,24 +62,50 @@ export default class CharacterSelectScene extends Phaser.Scene {
             lineSpacing: 8,
         });
 
-        // 开始按钮
-        const btn = this.add
-            .rectangle(520, 360, 340, 64, 0x2563eb, 1)
+        // 右侧按钮区域（避免压到左侧卡片）
+        const btnX = 740; // 关键：>650 就不会跟左侧 420 宽的卡片重叠
+        const btnY = 360;
+
+        const btnBg = this.add
+            .rectangle(btnX, btnY, 300, 64, 0x2563eb, 1)
+            .setOrigin(0.5)
+            .setDepth(10)
             .setInteractive({ useHandCursor: true })
             .on("pointerdown", () => {
                 this.scene.start("Battle");
             });
 
-        this.add.text(520, 360, "开始修行", {
-            fontFamily: "sans-serif",
-            fontSize: "26px",
-            color: "#ffffff",
-        }).setOrigin(0.5);
+        btnBg.setStrokeStyle(2, 0x93c5fd, 1);
 
-        this.add.text(520, 420, "（MVP：先进入事件界面）", {
-            fontFamily: "sans-serif",
-            fontSize: "14px",
-            color: "#94a3b8",
-        }).setOrigin(0.5);
+        const btnText = this.add
+            .text(btnX, btnY, "开始修行", {
+                fontFamily: "sans-serif",
+                fontSize: "26px",
+                color: "#ffffff",
+            })
+            .setOrigin(0.5)
+            .setDepth(11);
+
+        // 小提示也一起挪过去
+        this.add
+            .text(btnX, btnY + 60, "（MVP：先进入事件界面）", {
+                fontFamily: "sans-serif",
+                fontSize: "14px",
+                color: "#94a3b8",
+            })
+            .setOrigin(0.5)
+            .setDepth(11);
+
+        // 右上角全屏按钮
+        this.add
+            .text(930, 10, "⛶", { fontSize: "22px", color: "#ffffff" })
+            .setOrigin(1, 0)
+            .setDepth(999)
+            .setInteractive({ useHandCursor: true })
+            .on("pointerdown", () => {
+                if (this.scale.isFullscreen) this.scale.stopFullscreen();
+                else this.scale.startFullscreen();
+            });
+
     }
 }
