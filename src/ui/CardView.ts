@@ -26,6 +26,8 @@ export class CardView extends Phaser.GameObjects.Container {
         scene.add.existing(this);
 
         this.baseY = y;
+        const w = this.cardW;
+        const h = this.cardH;
 
         this.bg = scene.add.rectangle(0, 0, w, h, 0x0f172a, 1).setOrigin(0.5);
         this.bg.setStrokeStyle(2, 0x334155, 1);
