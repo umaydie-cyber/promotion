@@ -62,8 +62,8 @@ export default class CharacterSelectScene extends Phaser.Scene {
             lineSpacing: 8,
         });
 
-        // 右侧按钮区域（避免压到左侧卡片）
-        const btnX = 740; // 关键：>650 就不会跟左侧 420 宽的卡片重叠
+        // 开始按钮（放到右侧，避免压到左侧卡片）
+        const btnX = 740;
         const btnY = 360;
 
         const btnBg = this.add
@@ -74,10 +74,9 @@ export default class CharacterSelectScene extends Phaser.Scene {
             .on("pointerdown", () => {
                 this.scene.start("Battle");
             });
-
         btnBg.setStrokeStyle(2, 0x93c5fd, 1);
 
-        const btnText = this.add
+        this.add
             .text(btnX, btnY, "开始修行", {
                 fontFamily: "sans-serif",
                 fontSize: "26px",
@@ -86,7 +85,6 @@ export default class CharacterSelectScene extends Phaser.Scene {
             .setOrigin(0.5)
             .setDepth(11);
 
-        // 小提示也一起挪过去
         this.add
             .text(btnX, btnY + 60, "（MVP：先进入事件界面）", {
                 fontFamily: "sans-serif",
@@ -96,7 +94,7 @@ export default class CharacterSelectScene extends Phaser.Scene {
             .setOrigin(0.5)
             .setDepth(11);
 
-        // 右上角全屏按钮
+        // 全屏按钮
         this.add
             .text(930, 10, "⛶", { fontSize: "22px", color: "#ffffff" })
             .setOrigin(1, 0)
@@ -106,6 +104,5 @@ export default class CharacterSelectScene extends Phaser.Scene {
                 if (this.scale.isFullscreen) this.scale.stopFullscreen();
                 else this.scale.startFullscreen();
             });
-
     }
 }
