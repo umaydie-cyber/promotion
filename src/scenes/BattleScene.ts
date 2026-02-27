@@ -43,15 +43,16 @@ export default class BattleScene extends Phaser.Scene {
         name: "赤鳞狼",
         hp: 40,
         maxHp: 40,
-        intentDamage: 8,
+        intentDamage: 8, // 下回合打你多少
     };
 
     private drawPile: CardInstance[] = [];
     private discardPile: CardInstance[] = [];
     private hand: CardInstance[] = [];
 
-    private playerSprite?: Phaser.GameObjects.Sprite;
-    private enemySprite?: Phaser.GameObjects.Sprite;
+    // 形状占位“动态图片”
+    private playerAvatar?: Phaser.GameObjects.Arc;
+    private enemyAvatar?: Phaser.GameObjects.Rectangle;
 
     private playerHpBar?: Phaser.GameObjects.Graphics;
     private enemyHpBar?: Phaser.GameObjects.Graphics;
@@ -71,14 +72,32 @@ export default class BattleScene extends Phaser.Scene {
     create() {
         this.cameras.main.setBackgroundColor("#111827");
 
-        this.createPlaceholderAnimations();
+        // ✅ 人物（绿色圆形呼吸）
+        this.playerAvatar = this.add.circle(200, 280, 34, 0x22c55e, 1).setDepth(5);
+        this.playerAvatar.setStrokeStyle(6, 0x14532d, 1);
 
-        // 人物 / 怪物（占位动态）
-        this.playerSprite = this.add.sprite(200, 280, "player_0").setScale(2).setDepth(5);
-        this.playerSprite.play("player_idle");
+        this.tweens.add({
+            targets: this.playerAvatar,
+            scale: 1.06,
+            duration: 550,
+            yoyo: true,
+            repeat: -1,
+            ease: "Sine.InOut",
+        });
 
-        this.enemySprite = this.add.sprite(760, 170, "enemy_0").setScale(2).setDepth(5);
-        this.enemySprite.play("enemy_idle");
+        // ✅ 怪物（红色方块抖动）
+        this.enemyAvatar = this.add.rectangle(760, 170, 80, 70, 0xef4444, 1).setDepth(5);
+        this.enemyAvatar.setStrokeStyle(6, 0x7f1d1d, 1);
+
+        this.tweens.add({
+            targets: this.enemyAvatar,
+            scaleX: 1.06,
+            scaleY: 0.94,
+            duration: 420,
+            yoyo: true,
+            repeat: -1,
+            ease: "Sine.InOut",
+        });
 
         this.setupDeck();
         this.setupUI();
@@ -104,6 +123,7 @@ export default class BattleScene extends Phaser.Scene {
 
     // ======== 初始化 ========
     private setupDeck() {
+        // 剑修初始牌库：5挥砍 5招架（MVP 先不放还击，下一步再加）
         const deck: CardInstance[] = [];
         for (let i = 0; i < 5; i++) deck.push({ defId: "strike" });
         for (let i = 0; i < 5; i++) deck.push({ defId: "defend" });
@@ -173,9 +193,11 @@ export default class BattleScene extends Phaser.Scene {
 
     // ======== 回合流程 ========
     private startPlayerTurn(isFirstTurn = false) {
+        // 回合开始：重置能量，清空格挡（尖塔规则）
         this.player.energy = this.player.maxEnergy;
         this.player.block = 0;
 
+        // 抽牌：把手牌补到 5
         this.drawToHandSize(5);
 
         this.log(isFirstTurn ? "战斗开始！你的回合。" : "你的回合。");
@@ -183,8 +205,10 @@ export default class BattleScene extends Phaser.Scene {
     }
 
     private endPlayerTurn() {
+        // 弃掉手牌
         this.discardPile.push(...this.hand);
         this.hand = [];
+
         this.refreshHandUI();
 
         this.log("你结束了回合。敌人行动！");
@@ -192,17 +216,21 @@ export default class BattleScene extends Phaser.Scene {
     }
 
     private enemyAct() {
+        // 敌人造成伤害
         const dmg = this.enemy.intentDamage;
         this.applyDamageToPlayer(dmg);
 
+        // 生成下一回合意图（MVP：随机 6~10）
         this.enemy.intentDamage = Phaser.Math.Between(6, 10);
 
+        // 胜负判定
         if (this.player.hp <= 0) {
             this.log("你败了（MVP：返回角色选择）");
             this.time.delayedCall(700, () => this.scene.start("CharacterSelect"));
             return;
         }
 
+        // 回到玩家回合
         this.startPlayerTurn();
     }
 
@@ -217,8 +245,10 @@ export default class BattleScene extends Phaser.Scene {
             return;
         }
 
+        // 扣能量
         this.player.energy -= def.cost;
 
+        // 执行效果
         if (def.id === "strike") {
             this.applyDamageToEnemy(6);
             this.log(`你使用【挥砍】造成 6 伤害。`);
@@ -227,9 +257,11 @@ export default class BattleScene extends Phaser.Scene {
             this.log(`你使用【招架】获得 5 格挡。`);
         }
 
+        // 移出手牌→弃牌堆
         const [used] = this.hand.splice(indexInHand, 1);
         this.discardPile.push(used);
 
+        // 胜利判定
         if (this.enemy.hp <= 0) {
             this.refreshAllUI();
             this.log("敌人被击败！（MVP：返回事件界面）");
@@ -247,12 +279,12 @@ export default class BattleScene extends Phaser.Scene {
             if (!card) break;
             this.hand.push(card);
         }
-        // UI 刷新交给 refreshAllUI() 统一处理
     }
 
     private drawOne(): CardInstance | null {
         if (this.drawPile.length === 0) {
             if (this.discardPile.length === 0) return null;
+            // 洗弃牌堆进抽牌堆
             this.drawPile = shuffle(this.discardPile);
             this.discardPile = [];
             this.log("洗牌！");
@@ -263,7 +295,11 @@ export default class BattleScene extends Phaser.Scene {
     // ======== 伤害结算 ========
     private applyDamageToEnemy(amount: number) {
         this.enemy.hp = Math.max(0, this.enemy.hp - amount);
-        this.hitFx(this.enemySprite);
+
+        // 受击特效 + 飘字
+        this.hitFx(this.enemyAvatar as any);
+        if (this.enemyAvatar) this.floatText(this.enemyAvatar.x, this.enemyAvatar.y - 60, `-${amount}`, "#ef4444");
+
         this.refreshHpBars();
     }
 
@@ -274,7 +310,11 @@ export default class BattleScene extends Phaser.Scene {
         this.player.block -= blocked;
         this.player.hp = Math.max(0, this.player.hp - taken);
 
-        this.hitFx(this.playerSprite);
+        // 受击特效 + 飘字（只在真正掉血时显示）
+        this.hitFx(this.playerAvatar as any);
+        if (taken > 0 && this.playerAvatar) this.floatText(this.playerAvatar.x, this.playerAvatar.y - 60, `-${taken}`, "#ef4444");
+        if (taken <= 0 && blocked > 0 && this.playerAvatar) this.floatText(this.playerAvatar.x, this.playerAvatar.y - 60, `格挡`, "#93c5fd");
+
         this.refreshHpBars();
 
         this.log(
@@ -284,28 +324,57 @@ export default class BattleScene extends Phaser.Scene {
         );
     }
 
-    private hitFx(target?: Phaser.GameObjects.Sprite) {
+    // ======== 受击特效：闪烁 + 抖动（适配形状对象） ========
+    private hitFx(target?: Phaser.GameObjects.GameObject & { x: number; y: number; setAlpha: (a: number) => any }) {
         if (!target) return;
 
-        target.setTintFill(0xffffff);
-
-        this.time.delayedCall(80, () => {
-            target.clearTint();
+        // 闪烁
+        this.tweens.add({
+            targets: target,
+            alpha: 0.25,
+            duration: 60,
+            yoyo: true,
+            repeat: 2,
         });
 
+        // 抖动
         const baseX = target.x;
         const baseY = target.y;
 
         this.tweens.add({
             targets: target,
-            x: baseX + 6,
-            y: baseY - 4,
+            x: baseX + 10,
+            y: baseY - 6,
             duration: 60,
             yoyo: true,
             repeat: 2,
             onComplete: () => {
-                target.setPosition(baseX, baseY);
+                target.x = baseX;
+                target.y = baseY;
             },
+        });
+    }
+
+    // ======== 掉血飘字 ========
+    private floatText(x: number, y: number, text: string, color: string) {
+        const t = this.add
+            .text(x, y, text, {
+                fontFamily: "sans-serif",
+                fontSize: "22px",
+                color,
+                stroke: "#0b1220",
+                strokeThickness: 6,
+            })
+            .setOrigin(0.5)
+            .setDepth(999);
+
+        this.tweens.add({
+            targets: t,
+            y: y - 30,
+            alpha: 0,
+            duration: 650,
+            ease: "Cubic.Out",
+            onComplete: () => t.destroy(),
         });
     }
 
@@ -333,7 +402,8 @@ export default class BattleScene extends Phaser.Scene {
             this.enemyHpBar.fillStyle(0xef4444, 1);
             this.enemyHpBar.fillRoundedRect(40, 90, Math.floor(barW * pct), barH, 4);
 
-            this.enemyHpBar.lineStyle(2, 0x334155, 1);
+            // 更亮的描边，避免“看不见”
+            this.enemyHpBar.lineStyle(2, 0x93c5fd, 1);
             this.enemyHpBar.strokeRoundedRect(40, 90, barW, barH, 4);
         }
 
@@ -348,7 +418,7 @@ export default class BattleScene extends Phaser.Scene {
             this.playerHpBar.fillStyle(0x22c55e, 1);
             this.playerHpBar.fillRoundedRect(40, 480, Math.floor(barW * pct), barH, 4);
 
-            this.playerHpBar.lineStyle(2, 0x334155, 1);
+            this.playerHpBar.lineStyle(2, 0x93c5fd, 1);
             this.playerHpBar.strokeRoundedRect(40, 480, barW, barH, 4);
         }
     }
@@ -398,46 +468,8 @@ export default class BattleScene extends Phaser.Scene {
     private log(line: string) {
         const cur = this.ui.logText?.text ?? "";
         const next = (cur ? cur + "\n" : "") + line;
+        // 只保留最后 12 行
         const lines = next.split("\n").slice(-12);
         this.ui.logText?.setText(lines.join("\n"));
-    }
-
-    // 占位动画：更稳的纹理生成方式
-    private createPlaceholderAnimations() {
-        if (this.textures.exists("player_0")) return;
-
-        for (let i = 0; i < 4; i++) {
-            const g = this.add.graphics();
-            g.fillStyle(0x22c55e, 1);
-            g.fillCircle(32, 32, 18 + i);
-            g.lineStyle(4, 0x14532d, 1);
-            g.strokeCircle(32, 32, 18 + i);
-            g.generateTexture(`player_${i}`, 64, 64);
-            g.destroy();
-        }
-
-        for (let i = 0; i < 4; i++) {
-            const g = this.add.graphics();
-            g.fillStyle(0xef4444, 1);
-            g.fillRoundedRect(10 - i, 14, 44 + i * 2, 40, 8);
-            g.lineStyle(4, 0x7f1d1d, 1);
-            g.strokeRoundedRect(10 - i, 14, 44 + i * 2, 40, 8);
-            g.generateTexture(`enemy_${i}`, 64, 64);
-            g.destroy();
-        }
-
-        this.anims.create({
-            key: "player_idle",
-            frames: [{ key: "player_0" }, { key: "player_1" }, { key: "player_2" }, { key: "player_3" }],
-            frameRate: 6,
-            repeat: -1,
-        });
-
-        this.anims.create({
-            key: "enemy_idle",
-            frames: [{ key: "enemy_0" }, { key: "enemy_1" }, { key: "enemy_2" }, { key: "enemy_3" }],
-            frameRate: 6,
-            repeat: -1,
-        });
     }
 }
