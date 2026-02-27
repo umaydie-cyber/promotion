@@ -45,8 +45,10 @@ export default class BattleScene extends Phaser.Scene {
     private readonly cardW = 120;
     private readonly cardH = 170;
     private readonly cardGapMax = 18;
-    private readonly rightPanelW = 220;
+    private readonly rightPanelW = 280;
     private readonly bottomPadding = 18;
+
+    private hoveredHandIndex: number | null = null;
 
     // ======== 状态 ========
     private player = {
@@ -678,6 +680,7 @@ export default class BattleScene extends Phaser.Scene {
     }
 
     private refreshHandUI() {
+        // 先销毁旧 UI
         this.handViews.forEach((v) => v.destroy());
         this.handViews = [];
 
@@ -687,27 +690,33 @@ export default class BattleScene extends Phaser.Scene {
         const n = this.hand.length;
         if (n <= 0) return;
 
-        // 可用宽度：去掉右侧面板
+        // 可用宽度（右侧给结束回合按钮留位）
         const leftPadding = 20;
         const usableW = W - this.rightPanelW - leftPadding * 2;
 
+        // 手牌 y 基线（靠底）
+        const handAreaH = this.cardH + 2 * this.bottomPadding + 20;
+        const baseY = H - handAreaH / 2 + 10;
+
+        // 计算合理 gap（保证都放得下）
         let gap = this.cardGapMax;
         if (n > 1) {
             const maxGap = Math.floor((usableW - n * this.cardW) / (n - 1));
-            gap = Phaser.Math.Clamp(maxGap, 8, this.cardGapMax);
+            gap = Phaser.Math.Clamp(maxGap, 10, this.cardGapMax);
         }
 
         const totalW = n * this.cardW + (n - 1) * gap;
         const startLeft = leftPadding + Math.max(0, (usableW - totalW) / 2);
 
-        const handAreaH = this.cardH + 2 * this.bottomPadding + 20;
-        const handCenterY = H - handAreaH / 2 + 10;
-
+        // 先创建 CardView（位置先放直线）
         for (let i = 0; i < n; i++) {
             const def = CARD_DEFS[this.hand[i].defId];
             const x = startLeft + i * (this.cardW + gap) + this.cardW / 2;
 
-            const v = new CardView(this, x, handCenterY, this.cardW, this.cardH);
+            const v = new CardView(this, x, baseY, this.cardW, this.cardH);
+            v.setBaseDepth(100 + i);
+            v.setBasePos(x, baseY);
+
             v.setModel({
                 name: def.name,
                 cost: def.cost,
@@ -716,8 +725,88 @@ export default class BattleScene extends Phaser.Scene {
                 playable: this.player.energy >= def.cost,
             });
 
+            // 点击
             v.on("pointerdown", () => this.onCardClicked(i));
+
+            // hover：记录 index 并重新布局（让位）
+            v.on("pointerover", () => {
+                this.hoveredHandIndex = i;
+                this.layoutHandFan();
+            });
+
+            v.on("pointerout", () => {
+                // 只有当前 hover 的那张离开才清空
+                if (this.hoveredHandIndex === i) this.hoveredHandIndex = null;
+                this.layoutHandFan();
+            });
+
             this.handViews.push(v);
+        }
+
+        // 初次扇形布局
+        this.layoutHandFan();
+    }
+
+    private layoutHandFan() {
+        const n = this.handViews.length;
+        if (n <= 0) return;
+
+        const W = this.scale.width;
+        const H = this.scale.height;
+
+        // 手牌 y 基线
+        const handAreaH = this.cardH + 2 * this.bottomPadding + 20;
+        const baseY = H - handAreaH / 2 + 10;
+
+        // 手牌中心 x：在可用区域中心
+        const leftPadding = 20;
+        const usableW = W - this.rightPanelW - leftPadding * 2;
+        const centerX = leftPadding + usableW / 2;
+
+        // 扇形参数（随手牌数量变化）
+        const maxAngle = Phaser.Math.Clamp(12 + n * 1.5, 14, 26); // 总扇形角度
+        const angleStep = n === 1 ? 0 : maxAngle / (n - 1);
+
+        const radius = Phaser.Math.Clamp(520 - n * 18, 340, 520); // 半径越大越平
+        const spread = Phaser.Math.Clamp(72 + n * 4, 80, 140); // hover 时左右让位距离
+
+        // 计算每张牌的目标位置（扇形）
+        // 我们把扇形中心放在屏幕下方，形成上拱弧线
+        const arcCenterX = centerX;
+        const arcCenterY = baseY + radius; // 圆心在手牌下方
+
+        const mid = (n - 1) / 2;
+
+        for (let i = 0; i < n; i++) {
+            const v = this.handViews[i];
+
+            // 角度：左负右正
+            const angDeg = (i - mid) * angleStep;
+            const ang = Phaser.Math.DegToRad(angDeg);
+
+            // 圆弧点：x 方向按 sin，y 方向按 cos
+            let targetX = arcCenterX + Math.sin(ang) * radius;
+            let targetY = arcCenterY - Math.cos(ang) * radius;
+
+            // hover 让位：hover 左边往左挪，右边往右挪
+            if (this.hoveredHandIndex !== null) {
+                if (i < this.hoveredHandIndex) targetX -= spread;
+                if (i > this.hoveredHandIndex) targetX += spread;
+            }
+
+            // 设置 base pos（非 hover 时会贴合）
+            v.setBasePos(targetX, targetY);
+
+            // 非 hover 的牌：恢复到 base（位置 + scale 1 + depth base）
+            // hover 的牌：强制 hover on（上浮放大 + depth+1000）
+            if (this.hoveredHandIndex === i) {
+                v.forceHoverOn();
+            } else {
+                v.forceHoverOff();
+            }
+
+            // 视觉旋转（尖塔味道）
+            v.rotation = ang * 0.55;
         }
     }
 
