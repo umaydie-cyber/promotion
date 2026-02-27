@@ -11,8 +11,14 @@ node_modules
 dist
 dist-ssr
 *.local
+# build outputs
+dist/
+node_modules/
+# forbid compiled js under src
 src/**/*.js
 src/**/*.js.map
+src/**/*.d.ts
+src/**/*.d.ts.map
 node_modules/.vite/
 
 # Editor directories and files
