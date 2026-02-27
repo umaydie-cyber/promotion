@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 *.local
+src/**/*.js
+src/**/*.js.map
+node_modules/.vite/
 
 # Editor directories and files
 .vscode/*
