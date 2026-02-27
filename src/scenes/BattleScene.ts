@@ -2,20 +2,31 @@ import * as Phaser from "phaser";
 import { CardView } from "../ui/CardView";
 
 type CardId = "strike" | "defend";
+type CardType = "attack" | "skill";
 
 type Card = {
     id: CardId;
     name: string;
     cost: number;
+    type: CardType;
     desc: string;
 };
 
 const CARD_DEFS: Record<CardId, Card> = {
-    strike: { id: "strike", name: "挥砍", cost: 1, desc: "造成 6 点伤害" },
-    defend: { id: "defend", name: "招架", cost: 1, desc: "获得 5 点格挡" },
+    strike: { id: "strike", name: "挥砍", cost: 1, type: "attack", desc: "对单体造成 6 点伤害（需要选目标）" },
+    defend: { id: "defend", name: "招架", cost: 1, type: "skill", desc: "获得 5 点格挡" },
 };
 
 type CardInstance = { defId: CardId };
+
+type EnemyId = "wolfA" | "wolfB";
+type Enemy = {
+    id: EnemyId;
+    name: string;
+    hp: number;
+    maxHp: number;
+    intentDamage: number;
+};
 
 function shuffle<T>(arr: T[]) {
     for (let i = arr.length - 1; i > 0; i--) {
@@ -34,8 +45,8 @@ export default class BattleScene extends Phaser.Scene {
     private readonly cardW = 120;
     private readonly cardH = 170;
     private readonly cardGapMax = 18;
-    private readonly rightPanelW = 220; // ✅ 右侧预留给“结束回合”按钮
-    private readonly bottomPadding = 18; // 手牌离底部间距
+    private readonly rightPanelW = 220;
+    private readonly bottomPadding = 18;
 
     // ======== 状态 ========
     private player = {
@@ -46,29 +57,40 @@ export default class BattleScene extends Phaser.Scene {
         maxEnergy: 3,
     };
 
-    private enemy = {
-        name: "赤鳞狼",
-        hp: 40,
-        maxHp: 40,
-        intentDamage: 8,
-    };
+    private enemies: Enemy[] = [
+        { id: "wolfA", name: "赤鳞狼·甲", hp: 40, maxHp: 40, intentDamage: 7 },
+        { id: "wolfB", name: "赤鳞狼·乙", hp: 46, maxHp: 46, intentDamage: 9 },
+    ];
 
     private drawPile: CardInstance[] = [];
     private discardPile: CardInstance[] = [];
     private hand: CardInstance[] = [];
 
-    // 形状占位“动态图片”
+    // ======== 战场对象（形状占位） ========
     private playerAvatar?: Phaser.GameObjects.Arc;
-    private enemyAvatar?: Phaser.GameObjects.Rectangle;
+    private enemyAvatar: Record<EnemyId, Phaser.GameObjects.Rectangle | undefined> = {
+        wolfA: undefined,
+        wolfB: undefined,
+    };
 
-    // 血条
+    // ======== 血条 ========
     private playerHpBar?: Phaser.GameObjects.Graphics;
-    private enemyHpBar?: Phaser.GameObjects.Graphics;
+    private enemyHpBar: Record<EnemyId, Phaser.GameObjects.Graphics | undefined> = {
+        wolfA: undefined,
+        wolfB: undefined,
+    };
+
+    private enemyText: Record<EnemyId, Phaser.GameObjects.Text | undefined> = {
+        wolfA: undefined,
+        wolfB: undefined,
+    };
+    private intentText: Record<EnemyId, Phaser.GameObjects.Text | undefined> = {
+        wolfA: undefined,
+        wolfB: undefined,
+    };
 
     private ui = {
         playerText: null as Phaser.GameObjects.Text | null,
-        enemyText: null as Phaser.GameObjects.Text | null,
-        intentText: null as Phaser.GameObjects.Text | null,
         energyText: null as Phaser.GameObjects.Text | null,
         logText: null as Phaser.GameObjects.Text | null,
         endTurnBtn: null as Phaser.GameObjects.Rectangle | null,
@@ -78,60 +100,45 @@ export default class BattleScene extends Phaser.Scene {
 
     private handViews: CardView[] = [];
 
+    // ======== 选目标模式（核心） ========
+    private targetMode:
+        | {
+        active: true;
+        cardIndex: number;
+        card: CardInstance;
+        arrow: Phaser.GameObjects.Graphics;
+        hint: Phaser.GameObjects.Text;
+    }
+        | { active: false } = { active: false };
+
     // ======== 生命周期 ========
     create() {
         this.cameras.main.setBackgroundColor("#111827");
 
         this.setupDeck();
         this.setupUI();
-
-        // 头像（战场中）
         this.createAvatars();
+        this.createEnemyHud();
 
-        // 血条
-        this.enemyHpBar = this.add.graphics().setDepth(20);
         this.playerHpBar = this.add.graphics().setDepth(20);
+        this.enemyHpBar.wolfA = this.add.graphics().setDepth(20);
+        this.enemyHpBar.wolfB = this.add.graphics().setDepth(20);
 
-        // 首回合
         this.startPlayerTurn(true);
 
-        // 初次布局 + 监听 resize
         this.applyLayout();
         this.scale.on("resize", () => {
             this.applyLayout();
             this.refreshAllUI();
         });
-    }
 
-    // ======== 头像（用形状 + tween，绝对稳定） ========
-    private createAvatars() {
-        const W = this.scale.width;
-        const H = this.scale.height;
+        // update 用来刷新箭头跟随
+        this.events.on("update", () => this.updateTargetArrow());
 
-        // 先放个默认位置，后续 applyLayout 会摆正
-        this.playerAvatar = this.add.circle(W * 0.2, H * 0.45, 34, 0x22c55e, 1).setDepth(10);
-        this.playerAvatar.setStrokeStyle(6, 0x14532d, 1);
-
-        this.enemyAvatar = this.add.rectangle(W * 0.75, H * 0.25, 80, 70, 0xef4444, 1).setDepth(10);
-        this.enemyAvatar.setStrokeStyle(6, 0x7f1d1d, 1);
-
-        // 动画（轻一点，避免抢戏）
-        this.tweens.add({
-            targets: this.playerAvatar,
-            scale: 1.06,
-            duration: 560,
-            yoyo: true,
-            repeat: -1,
-            ease: "Sine.InOut",
-        });
-
-        this.tweens.add({
-            targets: this.enemyAvatar,
-            angle: 4,
-            duration: 280,
-            yoyo: true,
-            repeat: -1,
-            ease: "Sine.InOut",
+        // 取消选目标：Esc / 右键
+        this.input.keyboard?.on("keydown-ESC", () => this.cancelTargetMode());
+        this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
+            if (p.rightButtonDown()) this.cancelTargetMode();
         });
     }
 
@@ -147,20 +154,6 @@ export default class BattleScene extends Phaser.Scene {
     }
 
     private setupUI() {
-        // 敌人区（左上）
-        this.ui.enemyText = this.add.text(40, 30, "", {
-            fontFamily: "sans-serif",
-            fontSize: "22px",
-            color: "#ffffff",
-        });
-
-        this.ui.intentText = this.add.text(40, 60, "", {
-            fontFamily: "sans-serif",
-            fontSize: "16px",
-            color: "#cbd5e1",
-        });
-
-        // 玩家区（位置由 applyLayout 决定）
         this.ui.playerText = this.add.text(40, 420, "", {
             fontFamily: "sans-serif",
             fontSize: "20px",
@@ -173,7 +166,6 @@ export default class BattleScene extends Phaser.Scene {
             color: "#cbd5e1",
         });
 
-        // log（右上）
         this.ui.logText = this.add.text(520, 30, "", {
             fontFamily: "sans-serif",
             fontSize: "14px",
@@ -182,7 +174,6 @@ export default class BattleScene extends Phaser.Scene {
             wordWrap: { width: 420 },
         });
 
-        // 结束回合按钮（位置由 applyLayout 决定）
         const btn = this.add
             .rectangle(820, 480, 160, 50, 0x2563eb, 1)
             .setOrigin(0.5)
@@ -191,17 +182,12 @@ export default class BattleScene extends Phaser.Scene {
         btn.setStrokeStyle(2, 0x93c5fd, 1);
 
         const btnText = this.add
-            .text(820, 480, "结束回合", {
-                fontFamily: "sans-serif",
-                fontSize: "20px",
-                color: "#ffffff",
-            })
+            .text(820, 480, "结束回合", { fontFamily: "sans-serif", fontSize: "20px", color: "#ffffff" })
             .setOrigin(0.5);
 
         this.ui.endTurnBtn = btn;
         this.ui.endTurnText = btnText;
 
-        // 全屏按钮（右上角）
         const fs = this.add
             .text(this.scale.width - 10, 10, "⛶", { fontFamily: "sans-serif", fontSize: "22px", color: "#ffffff" })
             .setOrigin(1, 0)
@@ -211,54 +197,87 @@ export default class BattleScene extends Phaser.Scene {
                 if (this.scale.isFullscreen) this.scale.stopFullscreen();
                 else this.scale.startFullscreen();
             });
-
         this.ui.fullscreenText = fs;
-
-        this.refreshTopUI();
     }
 
-    // ======== 布局：分区（核心） ========
+    private createAvatars() {
+        const W = this.scale.width;
+        const H = this.scale.height;
+
+        this.playerAvatar = this.add.circle(W * 0.2, H * 0.45, 34, 0x22c55e, 1).setDepth(10);
+        this.playerAvatar.setStrokeStyle(6, 0x14532d, 1);
+
+        // 两头狼
+        this.enemyAvatar.wolfA = this.add.rectangle(W * 0.72, H * 0.26, 80, 70, 0xef4444, 1).setDepth(10);
+        this.enemyAvatar.wolfA.setStrokeStyle(6, 0x7f1d1d, 1);
+
+        this.enemyAvatar.wolfB = this.add.rectangle(W * 0.84, H * 0.34, 80, 70, 0xf97316, 1).setDepth(10);
+        this.enemyAvatar.wolfB.setStrokeStyle(6, 0x7c2d12, 1);
+
+        // 呼吸/轻抖
+        this.tweens.add({
+            targets: this.playerAvatar,
+            scale: 1.06,
+            duration: 560,
+            yoyo: true,
+            repeat: -1,
+            ease: "Sine.InOut",
+        });
+
+        this.tweens.add({
+            targets: [this.enemyAvatar.wolfA, this.enemyAvatar.wolfB].filter(Boolean) as Phaser.GameObjects.GameObject[],
+            angle: 3,
+            duration: 320,
+            yoyo: true,
+            repeat: -1,
+            ease: "Sine.InOut",
+        });
+    }
+
+    private createEnemyHud() {
+        // 两头狼各自一套文字
+        this.enemyText.wolfA = this.add.text(40, 24, "", { fontFamily: "sans-serif", fontSize: "20px", color: "#ffffff" });
+        this.intentText.wolfA = this.add.text(40, 50, "", { fontFamily: "sans-serif", fontSize: "14px", color: "#cbd5e1" });
+
+        this.enemyText.wolfB = this.add.text(40, 86, "", { fontFamily: "sans-serif", fontSize: "20px", color: "#ffffff" });
+        this.intentText.wolfB = this.add.text(40, 112, "", { fontFamily: "sans-serif", fontSize: "14px", color: "#cbd5e1" });
+    }
+
+    // ======== 布局 ========
     private applyLayout() {
         const W = this.scale.width;
         const H = this.scale.height;
 
-        // 手牌区高度：卡牌高度 + 上下 padding
         const handAreaH = this.cardH + 2 * this.bottomPadding + 20;
-
-        // 右侧按钮/面板位置（固定在手牌区右侧）
         const rightPanelX = W - this.rightPanelW / 2;
         const handCenterY = H - handAreaH / 2;
 
-        // 结束回合按钮放在“手牌区”垂直居中
-        if (this.ui.endTurnBtn) this.ui.endTurnBtn.setPosition(rightPanelX, handCenterY);
-        if (this.ui.endTurnText) this.ui.endTurnText.setPosition(rightPanelX, handCenterY);
+        this.ui.endTurnBtn?.setPosition(rightPanelX, handCenterY);
+        this.ui.endTurnText?.setPosition(rightPanelX, handCenterY);
 
-        // 玩家信息放在手牌区上方（不会被手牌盖住）
         const playerHudY = H - handAreaH - 80;
         this.ui.playerText?.setPosition(40, playerHudY);
         this.ui.energyText?.setPosition(40, playerHudY + 30);
 
-        // log 靠右上（随屏幕宽）
-        this.ui.logText?.setPosition(Math.max(520, Math.floor(W * 0.52)), 30);
-
-        // 全屏按钮右上角
+        this.ui.logText?.setPosition(Math.max(520, Math.floor(W * 0.52)), 24);
         this.ui.fullscreenText?.setPosition(W - 10, 10);
 
-        // 头像（战场区，绝不跟手牌区重叠）
-        // 战场区的下边界 = H - handAreaH
+        // 战场区域
         const battlefieldBottom = H - handAreaH;
-        const playerY = Math.floor(battlefieldBottom * 0.75); // 偏下，但仍在战场区
-        const enemyY = Math.floor(battlefieldBottom * 0.28);
+        const playerY = Math.floor(battlefieldBottom * 0.75);
+        const enemyY1 = Math.floor(battlefieldBottom * 0.26);
+        const enemyY2 = Math.floor(battlefieldBottom * 0.34);
 
-        if (this.playerAvatar) this.playerAvatar.setPosition(Math.floor(W * 0.20), playerY);
-        if (this.enemyAvatar) this.enemyAvatar.setPosition(Math.floor(W * 0.78), enemyY);
+        this.playerAvatar?.setPosition(Math.floor(W * 0.20), playerY);
+        this.enemyAvatar.wolfA?.setPosition(Math.floor(W * 0.72), enemyY1);
+        this.enemyAvatar.wolfB?.setPosition(Math.floor(W * 0.84), enemyY2);
 
-        // 最后：重排手牌（会自动给右侧按钮让位）
+        // 血条刷新会用到这些位置
         this.refreshHandUI();
         this.refreshHpBars();
     }
 
-    // ======== 回合流程 ========
+    // ======== 回合 ========
     private startPlayerTurn(isFirstTurn = false) {
         this.player.energy = this.player.maxEnergy;
         this.player.block = 0;
@@ -270,6 +289,9 @@ export default class BattleScene extends Phaser.Scene {
     }
 
     private endPlayerTurn() {
+        // 结束回合前取消选目标
+        this.cancelTargetMode();
+
         this.discardPile.push(...this.hand);
         this.hand = [];
         this.refreshHandUI();
@@ -279,10 +301,12 @@ export default class BattleScene extends Phaser.Scene {
     }
 
     private enemyAct() {
-        const dmg = this.enemy.intentDamage;
-        this.applyDamageToPlayer(dmg);
-
-        this.enemy.intentDamage = Phaser.Math.Between(6, 10);
+        // 两头狼都攻击一次（简单 demo：顺序攻击）
+        for (const e of this.aliveEnemies()) {
+            this.applyDamageToPlayer(e.intentDamage);
+            e.intentDamage = Phaser.Math.Between(6, 10);
+            if (this.player.hp <= 0) break;
+        }
 
         if (this.player.hp <= 0) {
             this.log("你败了（MVP：返回角色选择）");
@@ -293,23 +317,42 @@ export default class BattleScene extends Phaser.Scene {
         this.startPlayerTurn();
     }
 
+    private aliveEnemies() {
+        return this.enemies.filter((e) => e.hp > 0);
+    }
+
     // ======== 出牌 ========
-    private playCard(indexInHand: number) {
+    private onCardClicked(indexInHand: number) {
         const inst = this.hand[indexInHand];
         if (!inst) return;
 
         const def = CARD_DEFS[inst.defId];
+
+        // 能量不够直接提示
         if (this.player.energy < def.cost) {
             this.log("灵力不足！");
             return;
         }
 
+        // ✅ 攻击牌：进入选目标模式
+        if (def.type === "attack") {
+            this.enterTargetMode(indexInHand, inst);
+            return;
+        }
+
+        // ✅ 非攻击牌：直接使用
+        this.useCardNoTarget(indexInHand);
+    }
+
+    private useCardNoTarget(indexInHand: number) {
+        const inst = this.hand[indexInHand];
+        if (!inst) return;
+        const def = CARD_DEFS[inst.defId];
+        if (this.player.energy < def.cost) return;
+
         this.player.energy -= def.cost;
 
-        if (def.id === "strike") {
-            this.applyDamageToEnemy(6);
-            this.log(`你使用【挥砍】造成 6 伤害。`);
-        } else if (def.id === "defend") {
+        if (def.id === "defend") {
             this.player.block += 5;
             this.log(`你使用【招架】获得 5 格挡。`);
             if (this.playerAvatar) this.floatText(this.playerAvatar.x, this.playerAvatar.y - 60, `+5 格挡`, "#93c5fd");
@@ -318,7 +361,83 @@ export default class BattleScene extends Phaser.Scene {
         const [used] = this.hand.splice(indexInHand, 1);
         this.discardPile.push(used);
 
-        if (this.enemy.hp <= 0) {
+        this.refreshAllUI();
+    }
+
+    // ======== 选目标模式 ========
+    private enterTargetMode(cardIndex: number, card: CardInstance) {
+        this.cancelTargetMode(); // 防止重复进入
+
+        const arrow = this.add.graphics().setDepth(9999);
+        const hint = this.add
+            .text(this.scale.width / 2, 140, "选择一个目标（点击狼）\nEsc/右键取消", {
+                fontFamily: "sans-serif",
+                fontSize: "18px",
+                color: "#fbbf24",
+                align: "center",
+                stroke: "#0b1220",
+                strokeThickness: 6,
+            })
+            .setOrigin(0.5)
+            .setDepth(9999);
+
+        // 高亮可选敌人：加交互
+        for (const e of this.aliveEnemies()) {
+            const sprite = this.enemyAvatar[e.id];
+            if (!sprite) continue;
+
+            sprite.setInteractive({ useHandCursor: true });
+            sprite.once("pointerdown", () => {
+                this.confirmTargetAndUse(cardIndex, e.id);
+            });
+
+            // 轻微闪光提示
+            this.tweens.add({
+                targets: sprite,
+                alpha: 0.65,
+                duration: 220,
+                yoyo: true,
+                repeat: 2,
+            });
+        }
+
+        this.targetMode = { active: true, cardIndex, card, arrow, hint };
+    }
+
+    private confirmTargetAndUse(cardIndex: number, targetId: EnemyId) {
+        if (!this.targetMode.active) return;
+
+        const inst = this.hand[cardIndex];
+        if (!inst) {
+            this.cancelTargetMode();
+            return;
+        }
+        const def = CARD_DEFS[inst.defId];
+
+        // 二次校验能量
+        if (this.player.energy < def.cost) {
+            this.log("灵力不足！");
+            this.cancelTargetMode();
+            return;
+        }
+
+        // 结算
+        this.player.energy -= def.cost;
+
+        if (def.id === "strike") {
+            this.applyDamageToEnemy(targetId, 6);
+            this.log(`你使用【挥砍】对 ${this.getEnemy(targetId)?.name ?? "目标"} 造成 6 伤害。`);
+        }
+
+        // 移出手牌→弃牌堆
+        const [used] = this.hand.splice(cardIndex, 1);
+        this.discardPile.push(used);
+
+        // 清理模式（要在刷新 UI 前）
+        this.cancelTargetMode(true);
+
+        // 胜利判定：两头都死
+        if (this.aliveEnemies().length === 0) {
             this.refreshAllUI();
             this.log("敌人被击败！（MVP：返回事件界面）");
             this.time.delayedCall(700, () => this.scene.start("Event", { characterId: "swordsman" as any }));
@@ -328,7 +447,64 @@ export default class BattleScene extends Phaser.Scene {
         this.refreshAllUI();
     }
 
-    // ======== 抽牌/洗牌 ========
+    private cancelTargetMode(silent = false) {
+        if (!this.targetMode.active) return;
+
+        // 取消敌人交互
+        for (const e of this.enemies) {
+            const sprite = this.enemyAvatar[e.id];
+            if (!sprite) continue;
+            sprite.disableInteractive();
+            sprite.setAlpha(1);
+            sprite.removeAllListeners("pointerdown");
+        }
+
+        this.targetMode.arrow.destroy();
+        this.targetMode.hint.destroy();
+        this.targetMode = { active: false };
+
+        if (!silent) this.log("取消选目标。");
+    }
+
+    private updateTargetArrow() {
+        if (!this.targetMode.active) return;
+
+        const arrow = this.targetMode.arrow;
+        arrow.clear();
+
+        const fromX = this.playerAvatar?.x ?? 200;
+        const fromY = (this.playerAvatar?.y ?? 300) - 20;
+
+        const toX = this.input.activePointer.worldX;
+        const toY = this.input.activePointer.worldY;
+
+        // 线
+        arrow.lineStyle(6, 0xfbbf24, 1);
+        arrow.beginPath();
+        arrow.moveTo(fromX, fromY);
+        arrow.lineTo(toX, toY);
+        arrow.strokePath();
+
+        // 箭头（小三角）
+        const ang = Phaser.Math.Angle.Between(fromX, fromY, toX, toY);
+        const headLen = 18;
+        const left = ang + Math.PI * 0.85;
+        const right = ang - Math.PI * 0.85;
+
+        arrow.fillStyle(0xfbbf24, 1);
+        arrow.beginPath();
+        arrow.moveTo(toX, toY);
+        arrow.lineTo(toX + Math.cos(left) * headLen, toY + Math.sin(left) * headLen);
+        arrow.lineTo(toX + Math.cos(right) * headLen, toY + Math.sin(right) * headLen);
+        arrow.closePath();
+        arrow.fillPath();
+    }
+
+    private getEnemy(id: EnemyId) {
+        return this.enemies.find((e) => e.id === id);
+    }
+
+    // ======== 抽牌 ========
     private drawToHandSize(size: number) {
         while (this.hand.length < size) {
             const card = this.drawOne();
@@ -348,11 +524,15 @@ export default class BattleScene extends Phaser.Scene {
     }
 
     // ======== 伤害结算 ========
-    private applyDamageToEnemy(amount: number) {
-        this.enemy.hp = Math.max(0, this.enemy.hp - amount);
+    private applyDamageToEnemy(enemyId: EnemyId, amount: number) {
+        const e = this.getEnemy(enemyId);
+        if (!e || e.hp <= 0) return;
 
-        this.hitFx(this.enemyAvatar as any);
-        if (this.enemyAvatar) this.floatText(this.enemyAvatar.x, this.enemyAvatar.y - 70, `-${amount}`, "#ef4444");
+        e.hp = Math.max(0, e.hp - amount);
+
+        const avatar = this.enemyAvatar[enemyId];
+        this.hitFx(avatar as any);
+        if (avatar) this.floatText(avatar.x, avatar.y - 70, `-${amount}`, "#ef4444");
 
         this.refreshHpBars();
     }
@@ -372,7 +552,6 @@ export default class BattleScene extends Phaser.Scene {
         }
 
         this.refreshHpBars();
-
         this.log(
             blocked > 0
                 ? `敌人攻击 ${amount}，你格挡了 ${blocked}，受到 ${taken}。`
@@ -380,7 +559,6 @@ export default class BattleScene extends Phaser.Scene {
         );
     }
 
-    // ======== 受击特效：闪烁 + 抖动（适配形状对象） ========
     private hitFx(target?: Phaser.GameObjects.GameObject & { x: number; y: number; setAlpha: (a: number) => any }) {
         if (!target) return;
 
@@ -411,7 +589,6 @@ export default class BattleScene extends Phaser.Scene {
         });
     }
 
-    // ======== 飘字 ========
     private floatText(x: number, y: number, text: string, color: string) {
         const t = this.add
             .text(x, y, text, {
@@ -434,56 +611,72 @@ export default class BattleScene extends Phaser.Scene {
         });
     }
 
-    // ======== UI ========
+    // ======== UI 刷新 ========
     private refreshTopUI() {
-        this.ui.enemyText?.setText(`${this.enemy.name}  HP ${this.enemy.hp}/${this.enemy.maxHp}`);
-        this.ui.intentText?.setText(`意图：下回合造成 ${this.enemy.intentDamage} 伤害`);
-
+        // 玩家
         this.ui.playerText?.setText(`你（剑修） HP ${this.player.hp}/${this.player.maxHp}   格挡 ${this.player.block}`);
         this.ui.energyText?.setText(`灵力：${this.player.energy}/${this.player.maxEnergy}`);
+
+        // 两头狼
+        const a = this.getEnemy("wolfA")!;
+        const b = this.getEnemy("wolfB")!;
+
+        this.enemyText.wolfA?.setText(`${a.name}  HP ${a.hp}/${a.maxHp}`);
+        this.intentText.wolfA?.setText(`意图：下回合造成 ${a.intentDamage} 伤害`);
+
+        this.enemyText.wolfB?.setText(`${b.name}  HP ${b.hp}/${b.maxHp}`);
+        this.intentText.wolfB?.setText(`意图：下回合造成 ${b.intentDamage} 伤害`);
     }
 
     private refreshHpBars() {
-        const W = this.scale.width;
         const H = this.scale.height;
 
         const barW = 220;
         const barH = 12;
 
-        // 手牌区高度（要跟 applyLayout 一致）
+        // 手牌区高度（跟布局一致）
         const handAreaH = this.cardH + 2 * this.bottomPadding + 20;
         const playerBarY = H - handAreaH - 20;
 
-        if (this.enemyHpBar) {
-            this.enemyHpBar.clear();
-            const pct = Phaser.Math.Clamp(this.enemy.hp / this.enemy.maxHp, 0, 1);
-
-            this.enemyHpBar.fillStyle(0x0b1220, 1);
-            this.enemyHpBar.fillRoundedRect(40, 90, barW, barH, 4);
-
-            this.enemyHpBar.fillStyle(0xef4444, 1);
-            this.enemyHpBar.fillRoundedRect(40, 90, Math.floor(barW * pct), barH, 4);
-
-            this.enemyHpBar.lineStyle(2, 0x93c5fd, 1);
-            this.enemyHpBar.strokeRoundedRect(40, 90, barW, barH, 4);
-        }
-
+        // 玩家血条
+        this.playerHpBar?.clear();
         if (this.playerHpBar) {
-            this.playerHpBar.clear();
             const pct = Phaser.Math.Clamp(this.player.hp / this.player.maxHp, 0, 1);
-
             this.playerHpBar.fillStyle(0x0b1220, 1);
             this.playerHpBar.fillRoundedRect(40, playerBarY, barW, barH, 4);
-
             this.playerHpBar.fillStyle(0x22c55e, 1);
             this.playerHpBar.fillRoundedRect(40, playerBarY, Math.floor(barW * pct), barH, 4);
-
             this.playerHpBar.lineStyle(2, 0x93c5fd, 1);
             this.playerHpBar.strokeRoundedRect(40, playerBarY, barW, barH, 4);
         }
+
+        // 敌人 A 血条
+        this.enemyHpBar.wolfA?.clear();
+        if (this.enemyHpBar.wolfA) {
+            const e = this.getEnemy("wolfA")!;
+            const pct = Phaser.Math.Clamp(e.hp / e.maxHp, 0, 1);
+            this.enemyHpBar.wolfA.fillStyle(0x0b1220, 1);
+            this.enemyHpBar.wolfA.fillRoundedRect(40, 68, barW, barH, 4);
+            this.enemyHpBar.wolfA.fillStyle(0xef4444, 1);
+            this.enemyHpBar.wolfA.fillRoundedRect(40, 68, Math.floor(barW * pct), barH, 4);
+            this.enemyHpBar.wolfA.lineStyle(2, 0x93c5fd, 1);
+            this.enemyHpBar.wolfA.strokeRoundedRect(40, 68, barW, barH, 4);
+        }
+
+        // 敌人 B 血条
+        this.enemyHpBar.wolfB?.clear();
+        if (this.enemyHpBar.wolfB) {
+            const e = this.getEnemy("wolfB")!;
+            const pct = Phaser.Math.Clamp(e.hp / e.maxHp, 0, 1);
+            this.enemyHpBar.wolfB.fillStyle(0x0b1220, 1);
+            this.enemyHpBar.wolfB.fillRoundedRect(40, 130, barW, barH, 4);
+            this.enemyHpBar.wolfB.fillStyle(0xf97316, 1);
+            this.enemyHpBar.wolfB.fillRoundedRect(40, 130, Math.floor(barW * pct), barH, 4);
+            this.enemyHpBar.wolfB.lineStyle(2, 0x93c5fd, 1);
+            this.enemyHpBar.wolfB.strokeRoundedRect(40, 130, barW, barH, 4);
+        }
     }
 
-    // 手牌：居中 + 给右侧按钮让位 + 更靠底部
     private refreshHandUI() {
         this.handViews.forEach((v) => v.destroy());
         this.handViews = [];
@@ -494,11 +687,10 @@ export default class BattleScene extends Phaser.Scene {
         const n = this.hand.length;
         if (n <= 0) return;
 
-        // ✅ 可用宽度：去掉右侧面板
+        // 可用宽度：去掉右侧面板
         const leftPadding = 20;
         const usableW = W - this.rightPanelW - leftPadding * 2;
 
-        // gap 动态：让牌尽量铺开但不挤爆
         let gap = this.cardGapMax;
         if (n > 1) {
             const maxGap = Math.floor((usableW - n * this.cardW) / (n - 1));
@@ -508,7 +700,6 @@ export default class BattleScene extends Phaser.Scene {
         const totalW = n * this.cardW + (n - 1) * gap;
         const startLeft = leftPadding + Math.max(0, (usableW - totalW) / 2);
 
-        // ✅ 手牌中心 y：放到很靠底部的位置（不压到头像/玩家信息）
         const handAreaH = this.cardH + 2 * this.bottomPadding + 20;
         const handCenterY = H - handAreaH / 2 + 10;
 
@@ -525,7 +716,7 @@ export default class BattleScene extends Phaser.Scene {
                 playable: this.player.energy >= def.cost,
             });
 
-            v.on("pointerdown", () => this.playCard(i));
+            v.on("pointerdown", () => this.onCardClicked(i));
             this.handViews.push(v);
         }
     }
