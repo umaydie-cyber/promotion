@@ -1,9 +1,8 @@
-import * as Phaser from "phaser";
+import Phaser from "phaser";
 import BootScene from "./scenes/BootScene";
 import CharacterSelectScene from "./scenes/CharacterSelectScene";
 import EventScene from "./scenes/EventScene";
 import BattleScene from "./scenes/BattleScene";
-
 new Phaser.Game({
     type: Phaser.AUTO,
     width: 960,
