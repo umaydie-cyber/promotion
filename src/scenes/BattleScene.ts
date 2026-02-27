@@ -30,6 +30,13 @@ export default class BattleScene extends Phaser.Scene {
         super("Battle");
     }
 
+    // ======== 常量（布局用） ========
+    private readonly cardW = 120;
+    private readonly cardH = 170;
+    private readonly cardGapMax = 18;
+    private readonly rightPanelW = 220; // ✅ 右侧预留给“结束回合”按钮
+    private readonly bottomPadding = 18; // 手牌离底部间距
+
     // ======== 状态 ========
     private player = {
         hp: 70,
@@ -65,59 +72,54 @@ export default class BattleScene extends Phaser.Scene {
         energyText: null as Phaser.GameObjects.Text | null,
         logText: null as Phaser.GameObjects.Text | null,
         endTurnBtn: null as Phaser.GameObjects.Rectangle | null,
+        endTurnText: null as Phaser.GameObjects.Text | null,
+        fullscreenText: null as Phaser.GameObjects.Text | null,
     };
 
     private handViews: CardView[] = [];
 
     // ======== 生命周期 ========
     create() {
-        this.cameras.main.setBackgroundColor("#7f1d1d");
-        this.add.text(480, 270, "BATTLE LOADED", {
-            fontFamily: "sans-serif",
-            fontSize: "48px",
-            color: "#fbbf24",
-        }).setOrigin(0.5).setDepth(99999);
+        this.cameras.main.setBackgroundColor("#111827");
 
-        // ======== DEBUG：确认 BattleScene 正在画（线上也必定能看到）========
+        this.setupDeck();
+        this.setupUI();
+
+        // 头像（战场中）
+        this.createAvatars();
+
+        // 血条
+        this.enemyHpBar = this.add.graphics().setDepth(20);
+        this.playerHpBar = this.add.graphics().setDepth(20);
+
+        // 首回合
+        this.startPlayerTurn(true);
+
+        // 初次布局 + 监听 resize
+        this.applyLayout();
+        this.scale.on("resize", () => {
+            this.applyLayout();
+            this.refreshAllUI();
+        });
+    }
+
+    // ======== 头像（用形状 + tween，绝对稳定） ========
+    private createAvatars() {
         const W = this.scale.width;
         const H = this.scale.height;
 
-        this.add
-            .text(10, 10, `W=${W} H=${H}`, { fontFamily: "sans-serif", fontSize: "14px", color: "#fbbf24" })
-            .setDepth(2000);
-
-        this.add
-            .rectangle(W / 2, H / 2, W - 10, H - 10, 0x000000, 0)
-            .setStrokeStyle(2, 0xfbbf24, 1)
-            .setDepth(2000);
-
-        // ======== 人物/怪物：百分比定位 + 超高 depth + 明显动画（必定可见）========
-        const playerX = Math.floor(W * 0.22);
-        const playerY = Math.floor(H * 0.55);
-        const enemyX = Math.floor(W * 0.78);
-        const enemyY = Math.floor(H * 0.30);
-
-        this.playerAvatar = this.add.circle(playerX, playerY, 34, 0x22c55e, 1).setDepth(1000);
+        // 先放个默认位置，后续 applyLayout 会摆正
+        this.playerAvatar = this.add.circle(W * 0.2, H * 0.45, 34, 0x22c55e, 1).setDepth(10);
         this.playerAvatar.setStrokeStyle(6, 0x14532d, 1);
 
-        this.enemyAvatar = this.add.rectangle(enemyX, enemyY, 80, 70, 0xef4444, 1).setDepth(1000);
+        this.enemyAvatar = this.add.rectangle(W * 0.75, H * 0.25, 80, 70, 0xef4444, 1).setDepth(10);
         this.enemyAvatar.setStrokeStyle(6, 0x7f1d1d, 1);
 
-        this.add
-            .text(playerX, playerY - 70, "PLAYER", { fontFamily: "sans-serif", fontSize: "16px", color: "#fbbf24" })
-            .setOrigin(0.5)
-            .setDepth(2000);
-
-        this.add
-            .text(enemyX, enemyY - 70, "ENEMY", { fontFamily: "sans-serif", fontSize: "16px", color: "#fbbf24" })
-            .setOrigin(0.5)
-            .setDepth(2000);
-
-        // 动画幅度加大（肉眼必定能看到）
+        // 动画（轻一点，避免抢戏）
         this.tweens.add({
             targets: this.playerAvatar,
-            scale: 1.2,
-            duration: 500,
+            scale: 1.06,
+            duration: 560,
             yoyo: true,
             repeat: -1,
             ease: "Sine.InOut",
@@ -125,34 +127,12 @@ export default class BattleScene extends Phaser.Scene {
 
         this.tweens.add({
             targets: this.enemyAvatar,
-            angle: 6,
-            duration: 240,
+            angle: 4,
+            duration: 280,
             yoyo: true,
             repeat: -1,
             ease: "Sine.InOut",
         });
-
-        // ======== 初始化战斗 ========
-        this.setupDeck();
-        this.setupUI();
-
-        // 血条
-        this.enemyHpBar = this.add.graphics().setDepth(20);
-        this.playerHpBar = this.add.graphics().setDepth(20);
-        this.refreshHpBars();
-
-        this.startPlayerTurn(true);
-
-        // 全屏按钮
-        this.add
-            .text(W - 10, 10, "⛶", { fontFamily: "sans-serif", fontSize: "22px", color: "#ffffff" })
-            .setOrigin(1, 0)
-            .setDepth(3000)
-            .setInteractive({ useHandCursor: true })
-            .on("pointerdown", () => {
-                if (this.scale.isFullscreen) this.scale.stopFullscreen();
-                else this.scale.startFullscreen();
-            });
     }
 
     // ======== 初始化 ========
@@ -167,6 +147,7 @@ export default class BattleScene extends Phaser.Scene {
     }
 
     private setupUI() {
+        // 敌人区（左上）
         this.ui.enemyText = this.add.text(40, 30, "", {
             fontFamily: "sans-serif",
             fontSize: "22px",
@@ -179,6 +160,7 @@ export default class BattleScene extends Phaser.Scene {
             color: "#cbd5e1",
         });
 
+        // 玩家区（位置由 applyLayout 决定）
         this.ui.playerText = this.add.text(40, 420, "", {
             fontFamily: "sans-serif",
             fontSize: "20px",
@@ -191,23 +173,24 @@ export default class BattleScene extends Phaser.Scene {
             color: "#cbd5e1",
         });
 
+        // log（右上）
         this.ui.logText = this.add.text(520, 30, "", {
             fontFamily: "sans-serif",
             fontSize: "14px",
             color: "#e2e8f0",
             lineSpacing: 6,
-            wordWrap: { width: 400 },
+            wordWrap: { width: 420 },
         });
 
+        // 结束回合按钮（位置由 applyLayout 决定）
         const btn = this.add
             .rectangle(820, 480, 160, 50, 0x2563eb, 1)
             .setOrigin(0.5)
             .setInteractive({ useHandCursor: true })
             .on("pointerdown", () => this.endPlayerTurn());
-
         btn.setStrokeStyle(2, 0x93c5fd, 1);
 
-        this.add
+        const btnText = this.add
             .text(820, 480, "结束回合", {
                 fontFamily: "sans-serif",
                 fontSize: "20px",
@@ -216,8 +199,63 @@ export default class BattleScene extends Phaser.Scene {
             .setOrigin(0.5);
 
         this.ui.endTurnBtn = btn;
+        this.ui.endTurnText = btnText;
+
+        // 全屏按钮（右上角）
+        const fs = this.add
+            .text(this.scale.width - 10, 10, "⛶", { fontFamily: "sans-serif", fontSize: "22px", color: "#ffffff" })
+            .setOrigin(1, 0)
+            .setDepth(3000)
+            .setInteractive({ useHandCursor: true })
+            .on("pointerdown", () => {
+                if (this.scale.isFullscreen) this.scale.stopFullscreen();
+                else this.scale.startFullscreen();
+            });
+
+        this.ui.fullscreenText = fs;
 
         this.refreshTopUI();
+    }
+
+    // ======== 布局：分区（核心） ========
+    private applyLayout() {
+        const W = this.scale.width;
+        const H = this.scale.height;
+
+        // 手牌区高度：卡牌高度 + 上下 padding
+        const handAreaH = this.cardH + 2 * this.bottomPadding + 20;
+
+        // 右侧按钮/面板位置（固定在手牌区右侧）
+        const rightPanelX = W - this.rightPanelW / 2;
+        const handCenterY = H - handAreaH / 2;
+
+        // 结束回合按钮放在“手牌区”垂直居中
+        if (this.ui.endTurnBtn) this.ui.endTurnBtn.setPosition(rightPanelX, handCenterY);
+        if (this.ui.endTurnText) this.ui.endTurnText.setPosition(rightPanelX, handCenterY);
+
+        // 玩家信息放在手牌区上方（不会被手牌盖住）
+        const playerHudY = H - handAreaH - 80;
+        this.ui.playerText?.setPosition(40, playerHudY);
+        this.ui.energyText?.setPosition(40, playerHudY + 30);
+
+        // log 靠右上（随屏幕宽）
+        this.ui.logText?.setPosition(Math.max(520, Math.floor(W * 0.52)), 30);
+
+        // 全屏按钮右上角
+        this.ui.fullscreenText?.setPosition(W - 10, 10);
+
+        // 头像（战场区，绝不跟手牌区重叠）
+        // 战场区的下边界 = H - handAreaH
+        const battlefieldBottom = H - handAreaH;
+        const playerY = Math.floor(battlefieldBottom * 0.75); // 偏下，但仍在战场区
+        const enemyY = Math.floor(battlefieldBottom * 0.28);
+
+        if (this.playerAvatar) this.playerAvatar.setPosition(Math.floor(W * 0.20), playerY);
+        if (this.enemyAvatar) this.enemyAvatar.setPosition(Math.floor(W * 0.78), enemyY);
+
+        // 最后：重排手牌（会自动给右侧按钮让位）
+        this.refreshHandUI();
+        this.refreshHpBars();
     }
 
     // ======== 回合流程 ========
@@ -274,7 +312,6 @@ export default class BattleScene extends Phaser.Scene {
         } else if (def.id === "defend") {
             this.player.block += 5;
             this.log(`你使用【招架】获得 5 格挡。`);
-            // 给一点反馈
             if (this.playerAvatar) this.floatText(this.playerAvatar.x, this.playerAvatar.y - 60, `+5 格挡`, "#93c5fd");
         }
 
@@ -344,24 +381,18 @@ export default class BattleScene extends Phaser.Scene {
     }
 
     // ======== 受击特效：闪烁 + 抖动（适配形状对象） ========
-    private hitFx(
-        target?: Phaser.GameObjects.GameObject & { x: number; y: number; setAlpha: (a: number) => any }
-    ) {
+    private hitFx(target?: Phaser.GameObjects.GameObject & { x: number; y: number; setAlpha: (a: number) => any }) {
         if (!target) return;
 
-        // 闪烁
         this.tweens.add({
             targets: target,
             alpha: 0.25,
             duration: 60,
             yoyo: true,
             repeat: 2,
-            onComplete: () => {
-                target.setAlpha(1);
-            },
+            onComplete: () => target.setAlpha(1),
         });
 
-        // 抖动
         const baseX = target.x;
         const baseY = target.y;
 
@@ -380,7 +411,7 @@ export default class BattleScene extends Phaser.Scene {
         });
     }
 
-    // ======== 飘字（掉血/格挡/增益） ========
+    // ======== 飘字 ========
     private floatText(x: number, y: number, text: string, color: string) {
         const t = this.add
             .text(x, y, text, {
@@ -413,8 +444,15 @@ export default class BattleScene extends Phaser.Scene {
     }
 
     private refreshHpBars() {
+        const W = this.scale.width;
+        const H = this.scale.height;
+
         const barW = 220;
         const barH = 12;
+
+        // 手牌区高度（要跟 applyLayout 一致）
+        const handAreaH = this.cardH + 2 * this.bottomPadding + 20;
+        const playerBarY = H - handAreaH - 20;
 
         if (this.enemyHpBar) {
             this.enemyHpBar.clear();
@@ -435,17 +473,17 @@ export default class BattleScene extends Phaser.Scene {
             const pct = Phaser.Math.Clamp(this.player.hp / this.player.maxHp, 0, 1);
 
             this.playerHpBar.fillStyle(0x0b1220, 1);
-            this.playerHpBar.fillRoundedRect(40, 480, barW, barH, 4);
+            this.playerHpBar.fillRoundedRect(40, playerBarY, barW, barH, 4);
 
             this.playerHpBar.fillStyle(0x22c55e, 1);
-            this.playerHpBar.fillRoundedRect(40, 480, Math.floor(barW * pct), barH, 4);
+            this.playerHpBar.fillRoundedRect(40, playerBarY, Math.floor(barW * pct), barH, 4);
 
             this.playerHpBar.lineStyle(2, 0x93c5fd, 1);
-            this.playerHpBar.strokeRoundedRect(40, 480, barW, barH, 4);
+            this.playerHpBar.strokeRoundedRect(40, playerBarY, barW, barH, 4);
         }
     }
 
-    // 手牌：居中 + 上移
+    // 手牌：居中 + 给右侧按钮让位 + 更靠底部
     private refreshHandUI() {
         this.handViews.forEach((v) => v.destroy());
         this.handViews = [];
@@ -453,21 +491,32 @@ export default class BattleScene extends Phaser.Scene {
         const W = this.scale.width;
         const H = this.scale.height;
 
-        const cardW = 120;
-        const cardH = 170;
-        const gap = 18;
-
         const n = this.hand.length;
-        const totalW = n * cardW + (n - 1) * gap;
-        const startLeft = (W - totalW) / 2;
+        if (n <= 0) return;
 
-        const y = H - 210;
+        // ✅ 可用宽度：去掉右侧面板
+        const leftPadding = 20;
+        const usableW = W - this.rightPanelW - leftPadding * 2;
+
+        // gap 动态：让牌尽量铺开但不挤爆
+        let gap = this.cardGapMax;
+        if (n > 1) {
+            const maxGap = Math.floor((usableW - n * this.cardW) / (n - 1));
+            gap = Phaser.Math.Clamp(maxGap, 8, this.cardGapMax);
+        }
+
+        const totalW = n * this.cardW + (n - 1) * gap;
+        const startLeft = leftPadding + Math.max(0, (usableW - totalW) / 2);
+
+        // ✅ 手牌中心 y：放到很靠底部的位置（不压到头像/玩家信息）
+        const handAreaH = this.cardH + 2 * this.bottomPadding + 20;
+        const handCenterY = H - handAreaH / 2 + 10;
 
         for (let i = 0; i < n; i++) {
             const def = CARD_DEFS[this.hand[i].defId];
-            const x = startLeft + i * (cardW + gap) + cardW / 2;
+            const x = startLeft + i * (this.cardW + gap) + this.cardW / 2;
 
-            const v = new CardView(this, x, y, cardW, cardH);
+            const v = new CardView(this, x, handCenterY, this.cardW, this.cardH);
             v.setModel({
                 name: def.name,
                 cost: def.cost,
