@@ -71,7 +71,12 @@ export default class BattleScene extends Phaser.Scene {
 
     // ======== 生命周期 ========
     create() {
-        this.cameras.main.setBackgroundColor("#111827");
+        this.cameras.main.setBackgroundColor("#7f1d1d");
+        this.add.text(480, 270, "BATTLE LOADED", {
+            fontFamily: "sans-serif",
+            fontSize: "48px",
+            color: "#fbbf24",
+        }).setOrigin(0.5).setDepth(99999);
 
         // ======== DEBUG：确认 BattleScene 正在画（线上也必定能看到）========
         const W = this.scale.width;
