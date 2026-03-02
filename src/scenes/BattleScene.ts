@@ -1,23 +1,12 @@
 import * as Phaser from "phaser";
 import { CardView } from "../ui/CardView";
 
-type CardId = "strike" | "defend";
-type CardType = "attack" | "skill";
-
-type Card = {
-    id: CardId;
-    name: string;
-    cost: number;
-    type: CardType;
-    desc: string;
-};
-
-const CARD_DEFS: Record<CardId, Card> = {
-    strike: { id: "strike", name: "挥砍", cost: 1, type: "attack", desc: "造成 6 点伤害" },
-    defend: { id: "defend", name: "招架", cost: 1, type: "skill", desc: "获得 5 点格挡" },
-};
-
-type CardInstance = { defId: CardId };
+import { getCardDef } from "../data/cards";
+import { CHARACTERS } from "../data/characters";
+import type { CardInstance } from "../game/CardInstance";
+import { CombatDeck } from "../game/CombatDeck";
+import { playCard } from "../game/cardEffects";
+import { buildStarterDeck } from "../game/starterDeck";
 
 type EnemyId = "wolfA" | "wolfB";
 type Enemy = {
@@ -60,8 +49,7 @@ export default class BattleScene extends Phaser.Scene {
     private playerHudY = 260;      // 玩家 HUD 基准（layoutPlayerHud 计算）
     private readonly HUD_DEPTH = 5000;
 
-    private readonly hoverLift = 22;     // CardView hover 上浮（你就是 22）
-    private readonly hudSafeGap = 28;    // HUD 与手牌的安全距离（20~40 都行）
+    // （上面已经有 hoverLift / hudSafeGap，这里避免重复定义）
 
 
     // ======== 状态 ========
@@ -73,14 +61,18 @@ export default class BattleScene extends Phaser.Scene {
         maxEnergy: 3,
     };
 
+    // 回合内效果：还击（本回合内，每次被攻击后反伤）
+    private riposte = {
+        active: false,
+        damage: 6,
+    };
+
     private enemies: Enemy[] = [
         { id: "wolfA", name: "赤鳞狼·甲", hp: 40, maxHp: 40, intentDamage: 7 },
         { id: "wolfB", name: "赤鳞狼·乙", hp: 46, maxHp: 46, intentDamage: 9 },
     ];
 
-    private drawPile: CardInstance[] = [];
-    private discardPile: CardInstance[] = [];
-    private hand: CardInstance[] = [];
+    private deck!: CombatDeck;
 
     // ======== 战场对象（形状占位） ========
     private playerAvatar?: Phaser.GameObjects.Arc;
@@ -162,13 +154,16 @@ export default class BattleScene extends Phaser.Scene {
 
     // ======== 初始化 ========
     private setupDeck() {
-        const deck: CardInstance[] = [];
-        for (let i = 0; i < 5; i++) deck.push({ defId: "strike" });
-        for (let i = 0; i < 5; i++) deck.push({ defId: "defend" });
+        // 目前先用第一个角色（后续你可以从 CharacterSelectScene 传参进来）
+        const c = CHARACTERS[0];
 
-        this.drawPile = shuffle(deck);
-        this.discardPile = [];
-        this.hand = [];
+        this.player.maxHp = c.maxHp;
+        this.player.hp = c.maxHp;
+        this.player.maxEnergy = c.energy;
+        this.player.energy = c.energy;
+
+        const starter = buildStarterDeck(c);
+        this.deck = new CombatDeck(starter);
     }
 
     private setupUI() {
@@ -300,7 +295,10 @@ export default class BattleScene extends Phaser.Scene {
         this.player.energy = this.player.maxEnergy;
         this.player.block = 0;
 
-        this.drawToHandSize(5);
+        // 回合开始清理“本回合内”效果（但它会覆盖到敌人行动阶段）
+        this.riposte.active = false;
+
+        this.deck.drawToHandSize(5, () => this.log("洗牌！"));
 
         this.log(isFirstTurn ? "战斗开始！你的回合。" : "你的回合。");
         this.refreshAllUI();
@@ -310,8 +308,7 @@ export default class BattleScene extends Phaser.Scene {
         // 结束回合前取消选目标
         this.cancelTargetMode();
 
-        this.discardPile.push(...this.hand);
-        this.hand = [];
+        this.deck.discardHand();
         this.refreshHandUI();
 
         this.log("你结束了回合。敌人行动！");
@@ -321,7 +318,7 @@ export default class BattleScene extends Phaser.Scene {
     private enemyAct() {
         // 两头狼都攻击一次（简单 demo：顺序攻击）
         for (const e of this.aliveEnemies()) {
-            this.applyDamageToPlayer(e.intentDamage);
+            this.applyDamageToPlayer(e.intentDamage, e.id);
             e.intentDamage = Phaser.Math.Between(6, 10);
             if (this.player.hp <= 0) break;
         }
@@ -341,10 +338,10 @@ export default class BattleScene extends Phaser.Scene {
 
     // ======== 出牌 ========
     private onCardClicked(indexInHand: number) {
-        const inst = this.hand[indexInHand];
+        const inst = this.deck.hand[indexInHand];
         if (!inst) return;
 
-        const def = CARD_DEFS[inst.defId];
+        const def = getCardDef(inst.defId);
 
         // 能量不够直接提示
         if (this.player.energy < def.cost) {
@@ -353,7 +350,7 @@ export default class BattleScene extends Phaser.Scene {
         }
 
         // ✅ 攻击牌：进入选目标模式
-        if (def.type === "attack") {
+        if (def.target === "enemy") {
             this.enterTargetMode(indexInHand, inst);
             return;
         }
@@ -363,21 +360,27 @@ export default class BattleScene extends Phaser.Scene {
     }
 
     private useCardNoTarget(indexInHand: number) {
-        const inst = this.hand[indexInHand];
+        const inst = this.deck.hand[indexInHand];
         if (!inst) return;
-        const def = CARD_DEFS[inst.defId];
+        const def = getCardDef(inst.defId);
         if (this.player.energy < def.cost) return;
 
-        this.player.energy -= def.cost;
+        // 结算（卡牌效果不写死在 BattleScene 里）
+        playCard(inst.defId, {
+            spendEnergy: (n) => (this.player.energy -= n),
+            gainBlock: (n) => {
+                this.player.block += n;
+                if (this.playerAvatar) this.floatText(this.playerAvatar.x, this.playerAvatar.y - 60, `+${n} 格挡`, "#93c5fd");
+            },
+            setRiposteThisTurn: (damage) => {
+                this.riposte.active = true;
+                this.riposte.damage = damage;
+            },
+            dealDamage: (enemyId, dmg) => this.applyDamageToEnemy(enemyId, dmg),
+            log: (msg) => this.log(msg),
+        });
 
-        if (def.id === "defend") {
-            this.player.block += 5;
-            this.log(`你使用【招架】获得 5 格挡。`);
-            if (this.playerAvatar) this.floatText(this.playerAvatar.x, this.playerAvatar.y - 60, `+5 格挡`, "#93c5fd");
-        }
-
-        const [used] = this.hand.splice(indexInHand, 1);
-        this.discardPile.push(used);
+        this.deck.moveHandCardToDiscard(indexInHand);
 
         this.refreshAllUI();
     }
@@ -425,12 +428,12 @@ export default class BattleScene extends Phaser.Scene {
     private confirmTargetAndUse(cardIndex: number, targetId: EnemyId) {
         if (!this.targetMode.active) return;
 
-        const inst = this.hand[cardIndex];
+        const inst = this.deck.hand[cardIndex];
         if (!inst) {
             this.cancelTargetMode();
             return;
         }
-        const def = CARD_DEFS[inst.defId];
+        const def = getCardDef(inst.defId);
 
         // 二次校验能量
         if (this.player.energy < def.cost) {
@@ -439,17 +442,23 @@ export default class BattleScene extends Phaser.Scene {
             return;
         }
 
-        // 结算
-        this.player.energy -= def.cost;
-
-        if (def.id === "strike") {
-            this.applyDamageToEnemy(targetId, 6);
-            this.log(`你使用【挥砍】对 ${this.getEnemy(targetId)?.name ?? "目标"} 造成 6 伤害。`);
-        }
+        // 结算（卡牌效果不写死在 BattleScene 里）
+        playCard(inst.defId, {
+            spendEnergy: (n) => (this.player.energy -= n),
+            gainBlock: (n) => {
+                this.player.block += n;
+                if (this.playerAvatar) this.floatText(this.playerAvatar.x, this.playerAvatar.y - 60, `+${n} 格挡`, "#93c5fd");
+            },
+            setRiposteThisTurn: (damage) => {
+                this.riposte.active = true;
+                this.riposte.damage = damage;
+            },
+            dealDamage: (enemyId, dmg) => this.applyDamageToEnemy(enemyId, dmg),
+            log: (msg) => this.log(msg),
+        }, targetId);
 
         // 移出手牌→弃牌堆
-        const [used] = this.hand.splice(cardIndex, 1);
-        this.discardPile.push(used);
+        this.deck.moveHandCardToDiscard(cardIndex);
 
         // 清理模式（要在刷新 UI 前）
         this.cancelTargetMode(true);
@@ -522,24 +531,8 @@ export default class BattleScene extends Phaser.Scene {
         return this.enemies.find((e) => e.id === id);
     }
 
-    // ======== 抽牌 ========
-    private drawToHandSize(size: number) {
-        while (this.hand.length < size) {
-            const card = this.drawOne();
-            if (!card) break;
-            this.hand.push(card);
-        }
-    }
-
-    private drawOne(): CardInstance | null {
-        if (this.drawPile.length === 0) {
-            if (this.discardPile.length === 0) return null;
-            this.drawPile = shuffle(this.discardPile);
-            this.discardPile = [];
-            this.log("洗牌！");
-        }
-        return this.drawPile.pop() ?? null;
-    }
+    // ======== 抽牌 / 弃牌 / 手牌 ========
+    // 交给 CombatDeck 统一管理（drawPile / discardPile / hand 都在 deck 里）
 
     // ======== 伤害结算 ========
     private applyDamageToEnemy(enemyId: EnemyId, amount: number) {
@@ -555,7 +548,7 @@ export default class BattleScene extends Phaser.Scene {
         this.refreshHpBars();
     }
 
-    private applyDamageToPlayer(amount: number) {
+    private applyDamageToPlayer(amount: number, sourceEnemyId?: EnemyId) {
         const blocked = Math.min(this.player.block, amount);
         const taken = amount - blocked;
 
@@ -575,6 +568,14 @@ export default class BattleScene extends Phaser.Scene {
                 ? `敌人攻击 ${amount}，你格挡了 ${blocked}，受到 ${taken}。`
                 : `敌人攻击 ${amount}，你受到 ${taken}。`
         );
+
+        // ✅ 还击：本回合内，每次被攻击后对攻击者造成伤害
+        if (this.riposte.active && sourceEnemyId && amount > 0) {
+            const dmg = this.riposte.damage;
+            this.applyDamageToEnemy(sourceEnemyId, dmg);
+            const name = this.getEnemy(sourceEnemyId)?.name ?? "敌人";
+            this.log(`【还击】触发：对 ${name} 造成 ${dmg} 伤害。`);
+        }
     }
 
     private hitFx(target?: Phaser.GameObjects.GameObject & { x: number; y: number; setAlpha: (a: number) => any }) {
@@ -714,7 +715,7 @@ export default class BattleScene extends Phaser.Scene {
         const W = this.scale.width;
         const H = this.scale.height;
 
-        const n = this.hand.length;
+        const n = this.deck.hand.length;
         if (n <= 0) return;
 
         // 可用宽度（右侧给结束回合按钮留位）
@@ -737,7 +738,7 @@ export default class BattleScene extends Phaser.Scene {
 
         // 先创建 CardView（位置先放直线）
         for (let i = 0; i < n; i++) {
-            const def = CARD_DEFS[this.hand[i].defId];
+            const def = getCardDef(this.deck.hand[i].defId);
             const x = startLeft + i * (this.cardW + gap) + this.cardW / 2;
 
             const v = new CardView(this, x, baseY, this.cardW, this.cardH);
