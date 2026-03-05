@@ -3,6 +3,7 @@ import BootScene from "./scenes/BootScene";
 import CharacterSelectScene from "./scenes/CharacterSelectScene";
 import EventScene from "./scenes/EventScene";
 import BattleScene from "./scenes/BattleScene";
+import CultivationScene from "./scenes/CultivationScene";
 
 new Phaser.Game({
     type: Phaser.AUTO,
@@ -14,5 +15,5 @@ new Phaser.Game({
         width: 960,
         height: 680,
     },
-    scene: [BootScene, CharacterSelectScene, EventScene, BattleScene],
+    scene: [BootScene, CharacterSelectScene, CultivationScene, EventScene, BattleScene],
 });
