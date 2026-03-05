@@ -77,10 +77,9 @@ export default class CultivationScene extends Phaser.Scene {
         ink.fillCircle(460, 542, 220);
 
         ink.lineStyle(3, 0x3f3328, 0.18);
-        ink.beginPath();
-        ink.moveTo(40, 620);
-        ink.bezierCurveTo(220, 560, 470, 640, 910, 590);
-        ink.strokePath();
+        ink.strokeLineShape(new Phaser.Geom.Line(40, 620, 220, 575));
+        ink.strokeLineShape(new Phaser.Geom.Line(220, 575, 470, 625));
+        ink.strokeLineShape(new Phaser.Geom.Line(470, 625, 910, 590));
 
         const texture = this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0xe9e0d0, 0.32).setOrigin(0);
         texture.setDepth(-20);
