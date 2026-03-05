@@ -60,9 +60,6 @@ export default class BattleScene extends Phaser.Scene {
     private playerHudY = 260;      // 玩家 HUD 基准（layoutPlayerHud 计算）
     private readonly HUD_DEPTH = 5000;
 
-    private readonly hoverLift = 22;     // CardView hover 上浮（你就是 22）
-    private readonly hudSafeGap = 28;    // HUD 与手牌的安全距离（20~40 都行）
-
 
     // ======== 状态 ========
     private player = {

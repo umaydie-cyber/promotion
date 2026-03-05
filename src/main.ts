@@ -14,5 +14,5 @@ new Phaser.Game({
         width: 960,
         height: 680,
     },
-    scene: [BootScene, CharacterSelectScene, EventScene, BattleScene],
+    scene: [BootScene, CharacterSelectScene, CultivationScene, EventScene, BattleScene],
 });

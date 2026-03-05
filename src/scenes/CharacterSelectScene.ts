@@ -72,7 +72,7 @@ export default class CharacterSelectScene extends Phaser.Scene {
             .setDepth(10)
             .setInteractive({ useHandCursor: true })
             .on("pointerdown", () => {
-                this.scene.start("Battle");
+                this.scene.start("Cultivation", { characterId: c.id });
             });
         btnBg.setStrokeStyle(2, 0x93c5fd, 1);
 
@@ -86,7 +86,7 @@ export default class CharacterSelectScene extends Phaser.Scene {
             .setDepth(11);
 
         this.add
-            .text(btnX, btnY + 60, "（MVP：先进入事件界面）", {
+            .text(btnX, btnY + 60, "（MVP：先进入修仙界）", {
                 fontFamily: "sans-serif",
                 fontSize: "14px",
                 color: "#94a3b8",
