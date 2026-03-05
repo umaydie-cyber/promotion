@@ -30,18 +30,70 @@ export default class CultivationScene extends Phaser.Scene {
     }
 
     create() {
-        this.cameras.main.setBackgroundColor("#0f172a");
+        this.cameras.main.setBackgroundColor("#f3ede2");
+        this.drawInkWashBackground();
 
-        this.add.text(28, 22, "修仙界", {
-            fontFamily: "sans-serif",
-            fontSize: "40px",
-            color: "#f8fafc",
+        this.add.text(34, 22, "修仙界", {
+            fontFamily: "serif",
+            fontSize: "46px",
+            color: "#2b2118",
         });
 
-        this.add.text(30, 78, `角色：${this.currentCharacter.name}`, {
-            fontFamily: "sans-serif",
-            fontSize: "18px",
-            color: "#cbd5e1",
+        this.renderCharacterPanel();
+
+        this.makeButton(this.scale.width - 226, 34, 88, 36, "修炼卡组", () => {
+            this.showToast(`修炼卡组：${STARTER_CULTIVATION_DECK.map((c) => `${c.name}x${c.count}`).join("、")}`);
+        });
+
+        this.makeButton(this.scale.width - 126, 34, 88, 36, "战斗卡组", () => {
+            const battleDeck = this.currentCharacter.starterDeck.map((c) => `${c.name}x${c.count}`).join("、");
+            this.showToast(`战斗卡组：${battleDeck}`);
+        });
+
+        this.add.text(this.scale.width / 2, this.scale.height - 274, "可用修炼卡牌", {
+            fontFamily: "serif",
+            fontSize: "30px",
+            color: "#3a2d21",
+        }).setOrigin(0.5);
+
+        this.renderCultivationCards();
+
+        this.add
+            .text(this.scale.width - 18, 12, "⛶", { fontSize: "22px", color: "#3a2d21" })
+            .setOrigin(1, 0)
+            .setDepth(999)
+            .setInteractive({ useHandCursor: true })
+            .on("pointerdown", () => {
+                if (this.scale.isFullscreen) this.scale.stopFullscreen();
+                else this.scale.startFullscreen();
+            });
+    }
+
+    private drawInkWashBackground() {
+        const ink = this.add.graphics().setDepth(-10);
+        ink.fillStyle(0xb9ad98, 0.25);
+        ink.fillCircle(190, 128, 140);
+        ink.fillCircle(770, 180, 170);
+        ink.fillCircle(460, 542, 220);
+
+        ink.lineStyle(3, 0x3f3328, 0.18);
+        ink.beginPath();
+        ink.moveTo(40, 620);
+        ink.bezierCurveTo(220, 560, 470, 640, 910, 590);
+        ink.strokePath();
+
+        const texture = this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0xe9e0d0, 0.32).setOrigin(0);
+        texture.setDepth(-20);
+    }
+
+    private renderCharacterPanel() {
+        const panel = this.add.rectangle(30, 88, 430, 282, 0xf7f0e5, 0.92).setOrigin(0);
+        panel.setStrokeStyle(2, 0x5a4b3a, 0.8);
+
+        this.add.text(48, 104, `人物：${this.currentCharacter.name}`, {
+            fontFamily: "serif",
+            fontSize: "22px",
+            color: "#2f2419",
         });
 
         const attrs = [
@@ -57,77 +109,65 @@ export default class CultivationScene extends Phaser.Scene {
             "灵石：0",
         ];
 
-        const statPanel = this.add.rectangle(30, 118, 430, 290, 0x111827, 1).setOrigin(0);
-        statPanel.setStrokeStyle(2, 0x334155, 1);
-
-        this.add.text(48, 136, attrs.join("\n"), {
-            fontFamily: "sans-serif",
-            fontSize: "20px",
-            color: "#e2e8f0",
+        this.add.text(48, 140, attrs.join("\n"), {
+            fontFamily: "serif",
+            fontSize: "19px",
+            color: "#3d3125",
             lineSpacing: 8,
         });
-
-        this.makeButton(520, 120, 190, 52, "修炼卡组", () => {
-            this.showToast(`修炼卡组：${STARTER_CULTIVATION_DECK.map((c) => `${c.name}x${c.count}`).join("、")}`);
-        });
-
-        this.makeButton(730, 120, 190, 52, "战斗卡组", () => {
-            const battleDeck = this.currentCharacter.starterDeck.map((c) => `${c.name}x${c.count}`).join("、");
-            this.showToast(`战斗卡组：${battleDeck}`);
-        });
-
-        this.add.text(520, 195, "修炼卡牌区（点击卡牌打出）", {
-            fontFamily: "sans-serif",
-            fontSize: "24px",
-            color: "#f8fafc",
-        });
-
-        this.renderCultivationCards();
-
-        this.add
-            .text(this.scale.width - 18, 12, "⛶", { fontSize: "22px", color: "#ffffff" })
-            .setOrigin(1, 0)
-            .setDepth(999)
-            .setInteractive({ useHandCursor: true })
-            .on("pointerdown", () => {
-                if (this.scale.isFullscreen) this.scale.stopFullscreen();
-                else this.scale.startFullscreen();
-            });
     }
 
     private renderCultivationCards() {
-        const cardW = 170;
-        const cardH = 140;
-        const startX = 520;
-        const startY = 240;
+        const cardW = 138;
+        const cardH = 188;
         const gap = 14;
+        const totalW = STARTER_CULTIVATION_DECK.length * cardW + (STARTER_CULTIVATION_DECK.length - 1) * gap;
+        const startX = (this.scale.width - totalW) / 2;
+        const y = this.scale.height - cardH - 34;
 
         STARTER_CULTIVATION_DECK.forEach((card, idx) => {
-            const x = startX + (idx % 2) * (cardW + gap);
-            const y = startY + Math.floor(idx / 2) * (cardH + gap);
+            const x = startX + idx * (cardW + gap);
 
-            const bg = this.add
-                .rectangle(x, y, cardW, cardH, 0x1e293b, 1)
+            const cardBg = this.add
+                .rectangle(x, y, cardW, cardH, 0xf5efe3, 0.98)
                 .setOrigin(0)
-                .setStrokeStyle(2, 0x64748b, 1)
+                .setStrokeStyle(2, 0x4d4033, 0.95)
                 .setInteractive({ useHandCursor: true })
                 .on("pointerdown", () => this.playCultivationCard(card));
 
-            this.add.text(x + 10, y + 10, `${card.name} x${card.count}`, {
-                fontFamily: "sans-serif",
-                fontSize: "22px",
-                color: "#ffffff",
+            this.add.rectangle(x + 9, y + 9, cardW - 18, 66, 0xe0d2bb, 0.58).setOrigin(0);
+
+            this.add
+                .ellipse(x + 20, y + 20, 28, 28, 0x58493b, 1)
+                .setStrokeStyle(1, 0x2b2219, 1);
+
+            this.add.text(x + 20, y + 20, `${card.count}`, {
+                fontFamily: "serif",
+                fontSize: "17px",
+                color: "#f8f2e8",
+            }).setOrigin(0.5);
+
+            this.add.text(x + cardW / 2, y + 85, card.name, {
+                fontFamily: "serif",
+                fontSize: "25px",
+                color: "#2e2419",
+            }).setOrigin(0.5, 0);
+
+            this.add.text(x + 12, y + 122, card.desc, {
+                fontFamily: "serif",
+                fontSize: "14px",
+                color: "#5c4d3f",
+                wordWrap: { width: cardW - 24 },
             });
 
-            this.add.text(x + 10, y + 48, card.desc, {
-                fontFamily: "sans-serif",
-                fontSize: "16px",
-                color: "#cbd5e1",
-                wordWrap: { width: cardW - 20 },
-            });
+            this.add.text(x + cardW - 10, y + cardH - 9, "修炼", {
+                fontFamily: "serif",
+                fontSize: "13px",
+                color: "#756556",
+            }).setOrigin(1, 1);
 
-            bg.on("pointerover", () => bg.setFillStyle(0x334155, 1));
-            bg.on("pointerout", () => bg.setFillStyle(0x1e293b, 1));
+            cardBg.on("pointerover", () => cardBg.setFillStyle(0xede0ca, 1));
+            cardBg.on("pointerout", () => cardBg.setFillStyle(0xf5efe3, 0.98));
         });
     }
 
@@ -141,29 +181,29 @@ export default class CultivationScene extends Phaser.Scene {
 
     private makeButton(x: number, y: number, w: number, h: number, label: string, onClick: () => void) {
         const btn = this.add
-            .rectangle(x, y, w, h, 0x2563eb, 1)
+            .rectangle(x, y, w, h, 0x3f3326, 0.95)
             .setOrigin(0)
-            .setStrokeStyle(2, 0x93c5fd, 1)
+            .setStrokeStyle(1, 0x6f5f4d, 1)
             .setInteractive({ useHandCursor: true })
             .on("pointerdown", onClick);
 
         this.add.text(x + w / 2, y + h / 2, label, {
-            fontFamily: "sans-serif",
-            fontSize: "24px",
-            color: "#ffffff",
+            fontFamily: "serif",
+            fontSize: "15px",
+            color: "#f6ecdc",
         }).setOrigin(0.5);
 
-        btn.on("pointerover", () => btn.setFillStyle(0x1d4ed8, 1));
-        btn.on("pointerout", () => btn.setFillStyle(0x2563eb, 1));
+        btn.on("pointerover", () => btn.setFillStyle(0x5a4937, 1));
+        btn.on("pointerout", () => btn.setFillStyle(0x3f3326, 0.95));
     }
 
     private showToast(msg: string) {
         const toast = this.add
-            .text(this.scale.width / 2, this.scale.height - 44, msg, {
-                fontFamily: "sans-serif",
+            .text(this.scale.width / 2, this.scale.height - 42, msg, {
+                fontFamily: "serif",
                 fontSize: "16px",
-                color: "#f8fafc",
-                backgroundColor: "#0b1220",
+                color: "#f9f3e8",
+                backgroundColor: "#33281d",
                 padding: { x: 10, y: 6 },
             })
             .setOrigin(0.5)
