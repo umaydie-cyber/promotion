@@ -179,21 +179,63 @@ export default class CultivationScene extends Phaser.Scene {
     }
 
     private makeButton(x: number, y: number, w: number, h: number, label: string, onClick: () => void) {
-        const btn = this.add
-            .rectangle(x, y, w, h, 0x3f3326, 0.95)
+        const shadow = this.add
+            .rectangle(x + 2, y + 3, w, h, 0x1f1811, 0.24)
             .setOrigin(0)
-            .setStrokeStyle(1, 0x6f5f4d, 1)
-            .setInteractive({ useHandCursor: true })
-            .on("pointerdown", onClick);
+            .setDepth(9);
 
-        this.add.text(x + w / 2, y + h / 2, label, {
+        const btn = this.add
+            .rectangle(x, y, w, h, 0x4b3d2f, 0.94)
+            .setOrigin(0)
+            .setDepth(10)
+            .setStrokeStyle(1, 0x86745f, 0.95)
+            .setInteractive({ useHandCursor: true })
+            .on("pointerdown", () => {
+                btn.setY(y + 1.5);
+                shadow.setY(y + 2.5);
+                onClick();
+            })
+            .on("pointerup", () => {
+                btn.setY(y);
+                shadow.setY(y + 3);
+            })
+            .on("pointerout", () => {
+                btn.setY(y);
+                shadow.setY(y + 3);
+            });
+
+        const shine = this.add
+            .rectangle(x + 4, y + 3, w - 8, h * 0.45, 0xf1e2c8, 0.13)
+            .setOrigin(0)
+            .setDepth(11);
+
+        const btnText = this.add.text(x + w / 2, y + h / 2, label, {
             fontFamily: "serif",
             fontSize: "15px",
             color: "#f6ecdc",
-        }).setOrigin(0.5);
+        }).setOrigin(0.5).setDepth(12);
 
-        btn.on("pointerover", () => btn.setFillStyle(0x5a4937, 1));
-        btn.on("pointerout", () => btn.setFillStyle(0x3f3326, 0.95));
+        btn.on("pointerover", () => {
+            btn.setFillStyle(0x5a4937, 0.98);
+            this.tweens.add({
+                targets: [btn, btnText, shine],
+                y: `-=${1}`,
+                duration: 120,
+                ease: "Sine.easeOut",
+            });
+        });
+
+        btn.on("pointerout", () => {
+            btn.setFillStyle(0x4b3d2f, 0.94);
+            this.tweens.add({
+                targets: [btn, btnText, shine],
+                y,
+                duration: 140,
+                ease: "Sine.easeOut",
+            });
+            btnText.setY(y + h / 2);
+            shine.setY(y + 3);
+        });
     }
 
     private showToast(msg: string) {
