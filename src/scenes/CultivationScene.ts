@@ -22,6 +22,9 @@ type CycleSlot = {
     bg: Phaser.GameObjects.Rectangle;
     label: Phaser.GameObjects.Text;
     card?: CycleCard;
+    cardView?: CycleCardView;
+    deleteBtn?: Phaser.GameObjects.Rectangle;
+    deleteText?: Phaser.GameObjects.Text;
 };
 
 const STARTER_CYCLE_DECK: CycleCard[] = [
@@ -58,11 +61,15 @@ export default class CultivationScene extends Phaser.Scene {
 
         this.renderCharacterPanel();
 
-        this.makeButton(this.scale.width - 226, 34, 88, 36, "周期卡组", () => {
+        this.makeButton(this.scale.width - 324, 34, 88, 36, "周期卡组", () => {
             this.showToast(`周期卡组：${STARTER_CYCLE_DECK.map((c) => `${c.name}x${c.count}`).join("、")}`);
         });
 
-        this.makeButton(this.scale.width - 126, 34, 88, 36, "战斗卡组", () => {
+        this.makeButton(this.scale.width - 226, 34, 88, 36, "修炼卡组", () => {
+            this.showToast("修炼卡组：敬请期待");
+        });
+
+        this.makeButton(this.scale.width - 128, 34, 88, 36, "战斗卡组", () => {
             const battleDeck = this.currentCharacter.starterDeck.map((c) => `${c.name}x${c.count}`).join("、");
             this.showToast(`战斗卡组：${battleDeck}`);
         });
@@ -75,7 +82,7 @@ export default class CultivationScene extends Phaser.Scene {
 
         this.renderCycleCardsArea();
 
-        this.makeButton(this.scale.width - 178, this.scale.height - 278, 140, 36, "打出一轮牌", () => {
+        this.makeButton(this.scale.width - 178, this.scale.height - 278, 140, 36, "开始修行", () => {
             this.resolveRound();
         });
 
@@ -232,11 +239,54 @@ export default class CultivationScene extends Phaser.Scene {
                 }
 
                 slot.card = view.card;
+                slot.cardView = view;
                 slot.label.setText(`第${this.cycleSlots.indexOf(slot) + 1}轮\n${view.card.name}`);
                 slot.bg.setFillStyle(0xe8dcc9, 0.95);
 
                 dragTarget.disableInteractive();
                 dragTarget.setVisible(false);
+
+                if (slot.deleteBtn) {
+                    slot.deleteBtn.destroy();
+                }
+                if (slot.deleteText) {
+                    slot.deleteText.destroy();
+                }
+
+                const deleteBtn = this.add
+                    .rectangle(slot.bg.x + slot.bg.width - 12, slot.bg.y + 12, 18, 18, 0x7b2b22, 0.95)
+                    .setOrigin(0.5)
+                    .setDepth(30)
+                    .setStrokeStyle(1, 0xe9d8c0, 0.9)
+                    .setInteractive({ useHandCursor: true });
+
+                const deleteText = this.add
+                    .text(deleteBtn.x, deleteBtn.y - 1, "×", {
+                        fontFamily: "serif",
+                        fontSize: "15px",
+                        color: "#f8e7d5",
+                    })
+                    .setOrigin(0.5)
+                    .setDepth(31);
+
+                deleteBtn.on("pointerdown", () => {
+                    slot.card = undefined;
+                    slot.cardView = undefined;
+                    slot.label.setText(`第${this.cycleSlots.indexOf(slot) + 1}轮\n拖入周期卡`);
+                    slot.bg.setFillStyle(0xf8f3ea, 0.8);
+
+                    view.bg.setPosition(view.originX, view.originY);
+                    view.bg.setVisible(true);
+                    view.bg.setInteractive({ draggable: true, useHandCursor: true });
+
+                    deleteBtn.destroy();
+                    deleteText.destroy();
+                    slot.deleteBtn = undefined;
+                    slot.deleteText = undefined;
+                });
+
+                slot.deleteBtn = deleteBtn;
+                slot.deleteText = deleteText;
             },
         );
     }
@@ -301,6 +351,10 @@ export default class CultivationScene extends Phaser.Scene {
             color: "#f6ecdc",
         }).setOrigin(0.5).setDepth(12);
 
+        const btnBaseY = y;
+        const textBaseY = y + h / 2;
+        const shineBaseY = y + 3;
+
         btn.on("pointerover", () => {
             btn.setFillStyle(0x5a4937, 0.98);
             this.tweens.add({
@@ -314,13 +368,23 @@ export default class CultivationScene extends Phaser.Scene {
         btn.on("pointerout", () => {
             btn.setFillStyle(0x4b3d2f, 0.94);
             this.tweens.add({
-                targets: [btn, btnText, shine],
-                y,
+                targets: btn,
+                y: btnBaseY,
                 duration: 140,
                 ease: "Sine.easeOut",
             });
-            btnText.setY(y + h / 2);
-            shine.setY(y + 3);
+            this.tweens.add({
+                targets: btnText,
+                y: textBaseY,
+                duration: 140,
+                ease: "Sine.easeOut",
+            });
+            this.tweens.add({
+                targets: shine,
+                y: shineBaseY,
+                duration: 140,
+                ease: "Sine.easeOut",
+            });
         });
     }
 
