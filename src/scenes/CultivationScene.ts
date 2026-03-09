@@ -27,11 +27,128 @@ type CycleSlot = {
     deleteText?: Phaser.GameObjects.Text;
 };
 
+type CultivationCardId = "qi_infusion" | "epiphany" | "channel_qi" | "focus" | "visualize" | "micro_orbit" | "lingtai" | "spirit_sword";
+
+type CultivationCardDef = {
+    id: CultivationCardId;
+    name: string;
+    realm: "炼气" | "筑基";
+    cost: { energy: number; aura?: number; spirit?: number };
+    desc: string;
+    upgradedDesc: string;
+    onPlay: (scene: CultivationScene) => void;
+};
+
+type ResourceType = "aura" | "spirit";
+
+type HandCardView = {
+    def: CultivationCardDef;
+    container: Phaser.GameObjects.Container;
+};
+
 const STARTER_CYCLE_DECK: CycleCard[] = [
-    { id: "market", name: "坊市", count: 1, desc: "获取资源（占位效果）" },
-    { id: "travel", name: "游历山河", count: 1, desc: "触发游历事件（占位效果）" },
-    { id: "training", name: "历练", count: 2, desc: "获得历练收益（占位效果）" },
-    { id: "bounty", name: "悬赏", count: 1, desc: "承接悬赏任务（占位效果）" },
+    { id: "market", name: "坊市", count: 1, desc: "进入坊市" },
+    { id: "travel", name: "游历山河", count: 1, desc: "触发游历事件（占位）" },
+    { id: "training", name: "历练", count: 2, desc: "获得历练收益（占位）" },
+    { id: "bounty", name: "悬赏", count: 1, desc: "承接悬赏任务（占位）" },
+];
+
+const CULTIVATION_CARD_DEFS: Record<CultivationCardId, CultivationCardDef> = {
+    qi_infusion: {
+        id: "qi_infusion",
+        name: "引气入体",
+        realm: "炼气",
+        cost: { energy: 1, spirit: 1, aura: 3 },
+        desc: "消耗1精力、1神识、3灵气，生成5道韵。",
+        upgradedDesc: "升级：生成7道韵。",
+        onPlay: (scene) => scene.gainDaoYun(5),
+    },
+    epiphany: {
+        id: "epiphany",
+        name: "顿悟",
+        realm: "炼气",
+        cost: { energy: 2, spirit: 5 },
+        desc: "消耗2精力、5神识，生成8道韵。",
+        upgradedDesc: "升级：生成10道韵。",
+        onPlay: (scene) => scene.gainDaoYun(8),
+    },
+    channel_qi: {
+        id: "channel_qi",
+        name: "运气",
+        realm: "炼气",
+        cost: { energy: 1 },
+        desc: "消耗1精力，生成2点灵气。",
+        upgradedDesc: "升级：生成3点灵气。",
+        onPlay: (scene) => scene.gainAura(2),
+    },
+    focus: {
+        id: "focus",
+        name: "凝神",
+        realm: "炼气",
+        cost: { energy: 1 },
+        desc: "消耗1精力，生成2点神识。",
+        upgradedDesc: "升级：生成3点神识。",
+        onPlay: (scene) => scene.gainSpirit(2),
+    },
+    visualize: {
+        id: "visualize",
+        name: "观想",
+        realm: "炼气",
+        cost: { energy: 1 },
+        desc: "消耗1精力，生成1点神识并抽1张牌。",
+        upgradedDesc: "升级：生成2点神识并抽1张牌。",
+        onPlay: (scene) => {
+            scene.gainSpirit(1);
+            scene.drawCultivationCards(1);
+        },
+    },
+    micro_orbit: {
+        id: "micro_orbit",
+        name: "小周天",
+        realm: "炼气",
+        cost: { energy: 1 },
+        desc: "置于任脉区。每回合首次获得灵气时，额外获得1灵气。",
+        upgradedDesc: "升级：消耗改为0精力。",
+        onPlay: (scene) => {
+            scene.activateRenMai();
+        },
+    },
+    lingtai: {
+        id: "lingtai",
+        name: "灵台",
+        realm: "炼气",
+        cost: { energy: 1 },
+        desc: "置于督脉区。每回合开始时获得1神识。",
+        upgradedDesc: "升级：每回合开始获得2神识。",
+        onPlay: (scene) => {
+            scene.activateDuMai(1);
+        },
+    },
+    spirit_sword: {
+        id: "spirit_sword",
+        name: "蕴灵剑",
+        realm: "筑基",
+        cost: { energy: 2 },
+        desc: "剑修专属。生成5点灵气并生成1点道韵。",
+        upgradedDesc: "升级：生成7点灵气、2点道韵。",
+        onPlay: (scene) => {
+            scene.gainAura(5);
+            scene.gainDaoYun(1);
+        },
+    },
+};
+
+const STARTER_CULTIVATION_DECK: CultivationCardId[] = [
+    "qi_infusion",
+    "epiphany",
+    "channel_qi",
+    "channel_qi",
+    "channel_qi",
+    "channel_qi",
+    "focus",
+    "focus",
+    "focus",
+    "visualize",
 ];
 
 export default class CultivationScene extends Phaser.Scene {
@@ -42,6 +159,28 @@ export default class CultivationScene extends Phaser.Scene {
     private cycleStageText?: Phaser.GameObjects.Text;
 
     private readonly cycleStageLabels = ["准备阶段", "阶段一", "阶段二", "阶段三", "阶段四"];
+
+    private energy = 3;
+    private aura = 0;
+    private spirit = 0;
+    private daoYun = 0;
+
+    private resourcesText?: Phaser.GameObjects.Text;
+    private cultivationRoundText?: Phaser.GameObjects.Text;
+    private cultivationStatusText?: Phaser.GameObjects.Text;
+
+    private cultivationDeck: CultivationCardDef[] = [];
+    private cultivationDiscard: CultivationCardDef[] = [];
+    private handCards: CultivationCardDef[] = [];
+    private handCardViews: HandCardView[] = [];
+
+    private cultivationStarted = false;
+    private renMaiActive = false;
+    private renMaiTriggeredThisTurn = false;
+    private duMaiSpiritPerTurn = 0;
+    private meridianText?: Phaser.GameObjects.Text;
+    private breakthroughBtn?: Phaser.GameObjects.Rectangle;
+    private breakthroughText?: Phaser.GameObjects.Text;
 
     constructor() {
         super({ key: "Cultivation" });
@@ -70,7 +209,7 @@ export default class CultivationScene extends Phaser.Scene {
         });
 
         this.makeButton(this.scale.width - 226, 34, 88, 36, "修炼卡组", () => {
-            this.showToast("修炼卡组：敬请期待");
+            this.showToast("修炼卡组：引气入体x1、顿悟x1、运气x4、凝神x3、观想x1");
         });
 
         this.makeButton(this.scale.width - 128, 34, 88, 36, "战斗卡组", () => {
@@ -85,9 +224,14 @@ export default class CultivationScene extends Phaser.Scene {
         }).setOrigin(0.5);
 
         this.renderCycleCardsArea();
+        this.renderCultivationArea();
 
         this.makeButton(this.scale.width - 178, this.scale.height - 278, 140, 36, "开始修行", () => {
-            this.resolveRound();
+            this.startCultivation();
+        });
+
+        this.makeButton(this.scale.width - 178, this.scale.height - 236, 140, 36, "结束周期", () => {
+            this.endCycleRound();
         });
 
         this.add
@@ -118,7 +262,7 @@ export default class CultivationScene extends Phaser.Scene {
     }
 
     private renderCharacterPanel() {
-        const panel = this.add.rectangle(30, 88, 430, 282, 0xf7f0e5, 0.92).setOrigin(0);
+        const panel = this.add.rectangle(30, 88, 430, 340, 0xf7f0e5, 0.92).setOrigin(0);
         panel.setStrokeStyle(2, 0x5a4b3a, 0.8);
 
         this.add.text(48, 104, `人物：${this.currentCharacter.name}`, {
@@ -144,19 +288,321 @@ export default class CultivationScene extends Phaser.Scene {
             lineSpacing: 6,
         });
 
-        const rightAttrs = ["精力：3/3", "灵力：0", "神识：0", "道韵：0"];
-        this.add.text(252, 140, rightAttrs.join("\n"), {
+        this.resourcesText = this.add.text(252, 140, "", {
             fontFamily: "serif",
             fontSize: "18px",
             color: "#3d3125",
             lineSpacing: 6,
         });
 
-        this.cycleStageText = this.add.text(252, 275, `周期：${this.cycleStageLabels[this.cycleStageIndex]}`, {
+        this.meridianText = this.add.text(252, 238, "", {
+            fontFamily: "serif",
+            fontSize: "16px",
+            color: "#3d3125",
+            lineSpacing: 4,
+        });
+
+        this.cycleStageText = this.add.text(252, 298, `周期：${this.cycleStageLabels[this.cycleStageIndex]}`, {
             fontFamily: "serif",
             fontSize: "18px",
             color: "#3d3125",
         });
+
+        this.cultivationRoundText = this.add.text(252, 326, "修炼轮次：未开始", {
+            fontFamily: "serif",
+            fontSize: "16px",
+            color: "#3d3125",
+        });
+
+        this.cultivationStatusText = this.add.text(48, 392, "点击【开始修行】后抽5张修炼卡进入第一轮出牌。", {
+            fontFamily: "serif",
+            fontSize: "14px",
+            color: "#4a3a2b",
+            wordWrap: { width: 390 },
+        });
+
+        this.breakthroughBtn = this.add.rectangle(336, 360, 110, 30, 0x6b5b46, 0.55).setOrigin(0.5);
+        this.breakthroughBtn.setStrokeStyle(1, 0x9c8a73, 0.8);
+        this.breakthroughText = this.add.text(336, 360, "筑基未解锁", {
+            fontFamily: "serif",
+            fontSize: "14px",
+            color: "#d8ccbc",
+        }).setOrigin(0.5);
+
+        this.updateResourceText();
+        this.updateMeridianText();
+    }
+
+    private renderCultivationArea() {
+        this.add.text(this.scale.width / 2, 438, "修炼手牌区（点击卡牌打出）", {
+            fontFamily: "serif",
+            fontSize: "24px",
+            color: "#3a2d21",
+        }).setOrigin(0.5);
+    }
+
+    private startCultivation() {
+        if (!this.cycleSlots.every((slot) => slot.card)) {
+            this.showToast("请先拖拽5张周期卡中的4张到周期轮次。", 1800);
+            return;
+        }
+
+        this.cultivationStarted = true;
+        this.roundIndex = 0;
+        this.cycleStageIndex = 1;
+        this.energy = 3;
+        this.aura = 0;
+        this.spirit = 0;
+        this.daoYun = 0;
+        this.renMaiTriggeredThisTurn = false;
+        this.renMaiActive = false;
+        this.duMaiSpiritPerTurn = 0;
+        this.cultivationDeck = Phaser.Utils.Array.Shuffle(STARTER_CULTIVATION_DECK.map((id) => CULTIVATION_CARD_DEFS[id]));
+        this.cultivationDiscard = [];
+        this.handCards = [];
+        this.clearHandViews();
+        this.drawCultivationCards(5);
+        this.updateResourceText();
+        this.updateCycleStageText();
+        this.updateMeridianText();
+        this.updateRoundText();
+        this.showStatus("修行开始：已抽5张修炼卡，进入第一轮出牌。", "#2f2419");
+    }
+
+    private endCycleRound() {
+        if (!this.cultivationStarted) {
+            this.showToast("请先点击开始修行。", 1200);
+            return;
+        }
+
+        const currentSlot = this.cycleSlots[this.roundIndex];
+        const cardName = currentSlot.card?.name ?? "未知卡牌";
+        this.resolveCycleCard(currentSlot.card);
+        this.showToast(`结束第${this.roundIndex + 1}轮，触发周期卡【${cardName}】。`, 1800);
+        currentSlot.bg.setFillStyle(0xccbba2, 1);
+
+        this.roundIndex += 1;
+        if (this.roundIndex >= 4) {
+            this.cultivationStarted = false;
+            this.cycleStageIndex = 0;
+            this.roundIndex = 0;
+            this.handCards = [];
+            this.clearHandViews();
+            this.cycleSlots.forEach((slot, idx) => {
+                slot.bg.setFillStyle(0xe8dcc9, 0.95);
+                slot.label.setText(`第${idx + 1}轮\n${slot.card?.name ?? "拖入周期卡"}`);
+            });
+            this.updateCycleStageText();
+            this.updateRoundText();
+            this.showStatus("本周期修行结束，可重新点击开始修行进入下一周期。", "#4a3a2b");
+            return;
+        }
+
+        this.cycleStageIndex = Math.min(this.roundIndex + 1, this.cycleStageLabels.length - 1);
+        this.startNewTurn();
+    }
+
+    private startNewTurn() {
+        this.energy = 3;
+        this.renMaiTriggeredThisTurn = false;
+        if (this.duMaiSpiritPerTurn > 0) {
+            this.gainSpirit(this.duMaiSpiritPerTurn);
+        }
+        this.drawCultivationCards(5 - this.handCards.length);
+        this.updateResourceText();
+        this.updateCycleStageText();
+        this.updateRoundText();
+        this.showStatus(`进入第${this.roundIndex + 1}轮，可继续出牌。`, "#2f2419");
+    }
+
+    private resolveCycleCard(card?: CycleCard) {
+        if (!card) return;
+        if (card.id === "market") {
+            this.showStatus("周期效果：进入坊市界面（当前为占位提示）。", "#6b2d1a");
+        }
+    }
+
+    public gainAura(amount: number) {
+        let gain = amount;
+        if (this.renMaiActive && !this.renMaiTriggeredThisTurn) {
+            gain += 1;
+            this.renMaiTriggeredThisTurn = true;
+            this.showToast("任脉【小周天】触发：本回合首次获得灵气+1", 1600);
+        }
+        this.aura += gain;
+        this.updateResourceText();
+    }
+
+    public gainSpirit(amount: number) {
+        this.spirit += amount;
+        this.updateResourceText();
+    }
+
+    public gainDaoYun(amount: number) {
+        this.daoYun += amount;
+        this.updateResourceText();
+    }
+
+    public drawCultivationCards(count: number) {
+        for (let i = 0; i < count; i += 1) {
+            if (this.cultivationDeck.length === 0) {
+                if (this.cultivationDiscard.length === 0) break;
+                this.cultivationDeck = Phaser.Utils.Array.Shuffle([...this.cultivationDiscard]);
+                this.cultivationDiscard = [];
+            }
+            const card = this.cultivationDeck.shift();
+            if (card) this.handCards.push(card);
+        }
+        this.renderHandCards();
+    }
+
+    public activateRenMai() {
+        this.renMaiActive = true;
+        this.updateMeridianText();
+    }
+
+    public activateDuMai(spiritPerTurn: number) {
+        this.duMaiSpiritPerTurn = Math.max(this.duMaiSpiritPerTurn, spiritPerTurn);
+        this.updateMeridianText();
+    }
+
+    private playCultivationCard(card: CultivationCardDef) {
+        if (!this.cultivationStarted) {
+            this.showToast("尚未开始修行。", 1200);
+            return;
+        }
+
+        const auraCost = card.cost.aura ?? 0;
+        const spiritCost = card.cost.spirit ?? 0;
+        if (this.energy < card.cost.energy || this.aura < auraCost || this.spirit < spiritCost) {
+            this.showToast("资源不足，无法打出该卡。", 1200);
+            return;
+        }
+
+        this.energy -= card.cost.energy;
+        this.aura -= auraCost;
+        this.spirit -= spiritCost;
+
+        card.onPlay(this);
+
+        const idx = this.handCards.indexOf(card);
+        if (idx >= 0) {
+            this.handCards.splice(idx, 1);
+        }
+        this.cultivationDiscard.push(card);
+        this.renderHandCards();
+        this.updateResourceText();
+        this.showStatus(`已打出【${card.name}】。`, "#2f2419");
+    }
+
+    private updateResourceText() {
+        this.resourcesText?.setText([
+            `精力：${this.energy}/3`,
+            `灵气：${this.aura}`,
+            `神识：${this.spirit}`,
+            `道韵：${this.daoYun}`,
+        ].join("\n"));
+
+        const unlocked = this.daoYun >= 60;
+        if (this.breakthroughBtn && this.breakthroughText) {
+            this.breakthroughBtn.setFillStyle(unlocked ? 0x365e32 : 0x6b5b46, unlocked ? 0.95 : 0.55);
+            this.breakthroughBtn.setInteractive(unlocked ? { useHandCursor: true } : undefined);
+            this.breakthroughText.setText(unlocked ? "筑基（已解锁）" : "筑基未解锁");
+            this.breakthroughText.setColor(unlocked ? "#eef6e8" : "#d8ccbc");
+            this.breakthroughBtn.removeAllListeners("pointerdown");
+            if (unlocked) {
+                this.breakthroughBtn.on("pointerdown", () => {
+                    this.showToast("道韵已达60，可进行筑基突破。", 1600);
+                });
+            }
+        }
+    }
+
+    private updateRoundText() {
+        if (!this.cultivationStarted) {
+            this.cultivationRoundText?.setText("修炼轮次：未开始");
+            return;
+        }
+        this.cultivationRoundText?.setText(`修炼轮次：第${this.roundIndex + 1}轮`);
+    }
+
+    private updateMeridianText() {
+        const renMaiState = this.renMaiActive ? "任脉：小周天（已激活）" : "任脉：空";
+        const duMaiState = this.duMaiSpiritPerTurn > 0 ? `督脉：灵台（每回合+${this.duMaiSpiritPerTurn}神识）` : "督脉：空";
+        this.meridianText?.setText(["经脉区", renMaiState, duMaiState].join("\n"));
+    }
+
+    private showStatus(text: string, color: string) {
+        this.cultivationStatusText?.setText(text);
+        this.cultivationStatusText?.setColor(color);
+    }
+
+    private renderHandCards() {
+        this.clearHandViews();
+        if (this.handCards.length === 0) return;
+
+        const cardW = 136;
+        const cardH = 178;
+        const gap = 12;
+        const totalW = this.handCards.length * cardW + (this.handCards.length - 1) * gap;
+        const startX = (this.scale.width - totalW) / 2;
+        const y = 472;
+
+        this.handCards.forEach((card, idx) => {
+            const x = startX + idx * (cardW + gap);
+            const container = this.add.container(0, 0);
+
+            const bg = this.add.rectangle(x, y, cardW, cardH, 0xf5efe3, 0.98).setOrigin(0);
+            bg.setStrokeStyle(2, 0x4d4033, 0.95);
+
+            const title = this.add.text(x + cardW / 2, y + 9, `${card.name}（${card.realm}）`, {
+                fontFamily: "serif",
+                fontSize: "18px",
+                color: "#2e2419",
+            }).setOrigin(0.5, 0);
+
+            const costText = this.add.text(x + 8, y + 34, this.formatCost(card), {
+                fontFamily: "serif",
+                fontSize: "13px",
+                color: "#5c4d3f",
+                wordWrap: { width: cardW - 16 },
+                lineSpacing: 2,
+            });
+
+            const descText = this.add.text(x + 8, y + 62, `${card.desc}\n${card.upgradedDesc}`, {
+                fontFamily: "serif",
+                fontSize: "12px",
+                color: "#4b3f31",
+                wordWrap: { width: cardW - 16 },
+                lineSpacing: 3,
+                maxLines: 7,
+            });
+
+            const playTip = this.add.text(x + cardW / 2, y + cardH - 12, "点击打出", {
+                fontFamily: "serif",
+                fontSize: "12px",
+                color: "#6a5842",
+            }).setOrigin(0.5, 1);
+
+            bg.setInteractive({ useHandCursor: true }).on("pointerdown", () => {
+                this.playCultivationCard(card);
+            });
+
+            container.add([bg, title, costText, descText, playTip]);
+            this.handCardViews.push({ def: card, container });
+        });
+    }
+
+    private formatCost(card: CultivationCardDef): string {
+        const chunks = [`精力${card.cost.energy}`];
+        if (card.cost.aura) chunks.push(`灵气${card.cost.aura}`);
+        if (card.cost.spirit) chunks.push(`神识${card.cost.spirit}`);
+        return `消耗：${chunks.join("，")}`;
+    }
+
+    private clearHandViews() {
+        this.handCardViews.forEach((v) => v.container.destroy(true));
+        this.handCardViews = [];
     }
 
     private renderCycleCardsArea() {
@@ -305,33 +751,6 @@ export default class CultivationScene extends Phaser.Scene {
         );
     }
 
-    private resolveRound() {
-        if (!this.cycleSlots.every((slot) => slot.card)) {
-            this.showToast("请先拖拽5张周期卡中的4张到周期轮次。");
-            return;
-        }
-
-        if (this.roundIndex >= 4) {
-            this.showToast("本周期4轮已结束，消耗10寿元并进入下一周期（占位逻辑）。");
-            this.roundIndex = 0;
-            this.cycleStageIndex = 0;
-            this.cycleSlots.forEach((slot, idx) => {
-                slot.bg.setFillStyle(0xe8dcc9, 0.95);
-                slot.label.setText(`第${idx + 1}轮\n${slot.card?.name ?? "拖入周期卡"}`);
-            });
-            this.updateCycleStageText();
-            return;
-        }
-
-        const currentSlot = this.cycleSlots[this.roundIndex];
-        const cardName = currentSlot.card?.name ?? "未知卡牌";
-        this.showToast(`第${this.roundIndex + 1}轮结束，触发周期卡【${cardName}】。`);
-        currentSlot.bg.setFillStyle(0xccbba2, 1);
-        this.roundIndex += 1;
-        this.cycleStageIndex = Math.min(this.roundIndex, this.cycleStageLabels.length - 1);
-        this.updateCycleStageText();
-    }
-
     private updateCycleStageText() {
         this.cycleStageText?.setText(`周期：${this.cycleStageLabels[this.cycleStageIndex]}`);
     }
@@ -381,7 +800,7 @@ export default class CultivationScene extends Phaser.Scene {
             btn.setFillStyle(0x5a4937, 0.98);
             this.tweens.add({
                 targets: [btn, btnText, shine],
-                y: `-=${1}`,
+                y: "-=${1}",
                 duration: 120,
                 ease: "Sine.easeOut",
             });
@@ -410,7 +829,7 @@ export default class CultivationScene extends Phaser.Scene {
         });
     }
 
-    private showToast(msg: string) {
+    private showToast(msg: string, duration = 1500) {
         const toast = this.add
             .text(this.scale.width / 2, this.scale.height - 42, msg, {
                 fontFamily: "serif",
@@ -422,6 +841,6 @@ export default class CultivationScene extends Phaser.Scene {
             .setOrigin(0.5)
             .setDepth(2000);
 
-        this.time.delayedCall(1500, () => toast.destroy());
+        this.time.delayedCall(duration, () => toast.destroy());
     }
 }
