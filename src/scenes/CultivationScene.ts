@@ -1,23 +1,40 @@
 import * as Phaser from "phaser";
 import { CHARACTERS, type CharacterDef } from "../data/characters";
 
-type CultivationCard = {
-    id: "market" | "qi" | "comprehend" | "travel" | "daoHeart";
+type CycleCardId = "market" | "travel" | "training" | "bounty";
+
+type CycleCard = {
+    id: CycleCardId;
     name: string;
     count: number;
     desc: string;
 };
 
-const STARTER_CULTIVATION_DECK: CultivationCard[] = [
+type CycleCardView = {
+    card: CycleCard;
+    bg: Phaser.GameObjects.Rectangle;
+    originX: number;
+    originY: number;
+};
+
+type CycleSlot = {
+    zone: Phaser.GameObjects.Zone;
+    bg: Phaser.GameObjects.Rectangle;
+    label: Phaser.GameObjects.Text;
+    card?: CycleCard;
+};
+
+const STARTER_CYCLE_DECK: CycleCard[] = [
     { id: "market", name: "坊市", count: 1, desc: "获取资源（占位效果）" },
-    { id: "qi", name: "引气入体", count: 5, desc: "提升修为进度（占位效果）" },
-    { id: "comprehend", name: "参悟功法", count: 1, desc: "悟性相关收益（占位效果）" },
-    { id: "travel", name: "游历山河", count: 1, desc: "打出后进入事件" },
-    { id: "daoHeart", name: "问心", count: 1, desc: "稳定道心（占位效果）" },
+    { id: "travel", name: "游历山河", count: 1, desc: "触发游历事件（占位效果）" },
+    { id: "training", name: "历练", count: 2, desc: "获得历练收益（占位效果）" },
+    { id: "bounty", name: "悬赏", count: 1, desc: "承接悬赏任务（占位效果）" },
 ];
 
 export default class CultivationScene extends Phaser.Scene {
     private currentCharacter!: CharacterDef;
+    private cycleSlots: CycleSlot[] = [];
+    private roundIndex = 0;
 
     constructor() {
         super({ key: "Cultivation" });
@@ -33,7 +50,7 @@ export default class CultivationScene extends Phaser.Scene {
         this.cameras.main.setBackgroundColor("#f3ede2");
         this.drawInkWashBackground();
 
-        this.add.text(34, 22, "修仙界", {
+        this.add.text(34, 22, "修真界", {
             fontFamily: "serif",
             fontSize: "46px",
             color: "#2b2118",
@@ -41,8 +58,8 @@ export default class CultivationScene extends Phaser.Scene {
 
         this.renderCharacterPanel();
 
-        this.makeButton(this.scale.width - 226, 34, 88, 36, "修炼卡组", () => {
-            this.showToast(`修炼卡组：${STARTER_CULTIVATION_DECK.map((c) => `${c.name}x${c.count}`).join("、")}`);
+        this.makeButton(this.scale.width - 226, 34, 88, 36, "周期卡组", () => {
+            this.showToast(`周期卡组：${STARTER_CYCLE_DECK.map((c) => `${c.name}x${c.count}`).join("、")}`);
         });
 
         this.makeButton(this.scale.width - 126, 34, 88, 36, "战斗卡组", () => {
@@ -50,13 +67,17 @@ export default class CultivationScene extends Phaser.Scene {
             this.showToast(`战斗卡组：${battleDeck}`);
         });
 
-        this.add.text(this.scale.width / 2, this.scale.height - 274, "可用修炼卡牌", {
+        this.add.text(this.scale.width / 2, this.scale.height - 292, "周期卡牌（先拖拽填充周期，再每轮触发）", {
             fontFamily: "serif",
-            fontSize: "30px",
+            fontSize: "28px",
             color: "#3a2d21",
         }).setOrigin(0.5);
 
-        this.renderCultivationCards();
+        this.renderCycleCardsArea();
+
+        this.makeButton(this.scale.width - 178, this.scale.height - 278, 140, 36, "打出一轮牌", () => {
+            this.resolveRound();
+        });
 
         this.add
             .text(this.scale.width - 18, 12, "⛶", { fontSize: "22px", color: "#3a2d21" })
@@ -102,7 +123,8 @@ export default class CultivationScene extends Phaser.Scene {
             "符箓：[_] [_] [_]",
             "丹药：[_] [_] [_]",
             "精力：100/100",
-            "寿命：70",
+            "寿元：50（炼气期）",
+            "周期：每10寿元为1周期（4轮牌）",
             "道心：100/100",
             "正邪值：0",
             "灵石：0",
@@ -110,72 +132,136 @@ export default class CultivationScene extends Phaser.Scene {
 
         this.add.text(48, 140, attrs.join("\n"), {
             fontFamily: "serif",
-            fontSize: "19px",
+            fontSize: "18px",
             color: "#3d3125",
-            lineSpacing: 8,
+            lineSpacing: 6,
         });
     }
 
-    private renderCultivationCards() {
-        const cardW = 138;
-        const cardH = 188;
-        const gap = 14;
-        const totalW = STARTER_CULTIVATION_DECK.length * cardW + (STARTER_CULTIVATION_DECK.length - 1) * gap;
-        const startX = (this.scale.width - totalW) / 2;
-        const y = this.scale.height - cardH - 34;
+    private renderCycleCardsArea() {
+        const slotW = 150;
+        const slotH = 92;
+        const slotGap = 14;
+        const slotStartX = (this.scale.width - (slotW * 4 + slotGap * 3)) / 2;
+        const slotY = this.scale.height - 248;
 
-        STARTER_CULTIVATION_DECK.forEach((card, idx) => {
-            const x = startX + idx * (cardW + gap);
-
-            const cardBg = this.add
-                .rectangle(x, y, cardW, cardH, 0xf5efe3, 0.98)
+        this.cycleSlots = [];
+        for (let i = 0; i < 4; i++) {
+            const x = slotStartX + i * (slotW + slotGap);
+            const bg = this.add
+                .rectangle(x, slotY, slotW, slotH, 0xf8f3ea, 0.8)
                 .setOrigin(0)
-                .setStrokeStyle(2, 0x4d4033, 0.95)
-                .setInteractive({ useHandCursor: true })
-                .on("pointerdown", () => this.playCultivationCard(card));
-
-            this.add.rectangle(x + 9, y + 9, cardW - 18, 66, 0xe0d2bb, 0.58).setOrigin(0);
-
-            this.add
-                .ellipse(x + 20, y + 20, 28, 28, 0x58493b, 1)
-                .setStrokeStyle(1, 0x2b2219, 1);
-
-            this.add.text(x + 20, y + 20, `${card.count}`, {
+                .setStrokeStyle(2, 0x6c5b47, 0.8);
+            const label = this.add.text(x + slotW / 2, slotY + slotH / 2, `第${i + 1}轮\n拖入周期卡`, {
                 fontFamily: "serif",
-                fontSize: "17px",
-                color: "#f8f2e8",
+                fontSize: "18px",
+                color: "#695744",
+                align: "center",
             }).setOrigin(0.5);
 
-            this.add.text(x + cardW / 2, y + 85, card.name, {
+            const zone = this.add.zone(x, slotY, slotW, slotH).setOrigin(0);
+            zone.setRectangleDropZone(slotW, slotH);
+
+            this.cycleSlots.push({ zone, bg, label });
+        }
+
+        const cardW = 118;
+        const cardH = 138;
+        const cardGap = 16;
+        const expandedDeck: CycleCard[] = STARTER_CYCLE_DECK.flatMap((card) =>
+            Array.from({ length: card.count }, () => ({ ...card, count: 1 })),
+        );
+        const cardsTotalW = expandedDeck.length * cardW + (expandedDeck.length - 1) * cardGap;
+        const startX = (this.scale.width - cardsTotalW) / 2;
+        const cardY = this.scale.height - cardH - 22;
+
+        const cycleCardViews: CycleCardView[] = [];
+
+        expandedDeck.forEach((card, idx) => {
+            const x = startX + idx * (cardW + cardGap);
+            const bg = this.add
+                .rectangle(x, cardY, cardW, cardH, 0xf5efe3, 0.98)
+                .setOrigin(0)
+                .setStrokeStyle(2, 0x4d4033, 0.95)
+                .setInteractive({ draggable: true, useHandCursor: true });
+
+            this.add.rectangle(x + 8, cardY + 8, cardW - 16, 44, 0xe0d2bb, 0.58).setOrigin(0);
+            this.add.text(x + cardW / 2, cardY + 18, card.name, {
                 fontFamily: "serif",
-                fontSize: "25px",
+                fontSize: "24px",
                 color: "#2e2419",
             }).setOrigin(0.5, 0);
 
-            this.add.text(x + 12, y + 122, card.desc, {
+            this.add.text(x + 10, cardY + 66, card.desc, {
                 fontFamily: "serif",
                 fontSize: "14px",
                 color: "#5c4d3f",
-                wordWrap: { width: cardW - 24 },
+                wordWrap: { width: cardW - 20 },
             });
 
-            this.add.text(x + cardW - 10, y + cardH - 9, "修炼", {
-                fontFamily: "serif",
-                fontSize: "13px",
-                color: "#756556",
-            }).setOrigin(1, 1);
-
-            cardBg.on("pointerover", () => cardBg.setFillStyle(0xede0ca, 1));
-            cardBg.on("pointerout", () => cardBg.setFillStyle(0xf5efe3, 0.98));
+            cycleCardViews.push({ card, bg, originX: x, originY: cardY });
         });
+
+        this.input.on("drag", (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dragX: number, dragY: number) => {
+            const dragTarget = gameObject as Phaser.GameObjects.Rectangle;
+            dragTarget.setPosition(dragX, dragY);
+        });
+
+        this.input.on(
+            "dragend",
+            (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dropped: boolean) => {
+                const dragTarget = gameObject as Phaser.GameObjects.Rectangle;
+                const view = cycleCardViews.find((v) => v.bg === dragTarget);
+                if (!view) {
+                    return;
+                }
+                if (!dropped) {
+                    dragTarget.setPosition(view.originX, view.originY);
+                }
+            },
+        );
+
+        this.input.on(
+            "drop",
+            (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dropZone: Phaser.GameObjects.GameObject) => {
+                const dragTarget = gameObject as Phaser.GameObjects.Rectangle;
+                const view = cycleCardViews.find((v) => v.bg === dragTarget);
+                const slot = this.cycleSlots.find((s) => s.zone === dropZone);
+                if (!view || !slot || slot.card) {
+                    return;
+                }
+
+                slot.card = view.card;
+                slot.label.setText(`第${this.cycleSlots.indexOf(slot) + 1}轮\n${view.card.name}`);
+                slot.bg.setFillStyle(0xe8dcc9, 0.95);
+
+                dragTarget.disableInteractive();
+                dragTarget.setVisible(false);
+            },
+        );
     }
 
-    private playCultivationCard(card: CultivationCard) {
-        if (card.id === "travel") {
-            this.scene.start("Event", { characterId: this.currentCharacter.id });
+    private resolveRound() {
+        if (!this.cycleSlots.every((slot) => slot.card)) {
+            this.showToast("请先拖拽5张周期卡中的4张到周期轮次。");
             return;
         }
-        this.showToast(`打出【${card.name}】：${card.desc}`);
+
+        if (this.roundIndex >= 4) {
+            this.showToast("本周期4轮已结束，消耗10寿元并进入下一周期（占位逻辑）。");
+            this.roundIndex = 0;
+            this.cycleSlots.forEach((slot, idx) => {
+                slot.bg.setFillStyle(0xe8dcc9, 0.95);
+                slot.label.setText(`第${idx + 1}轮\n${slot.card?.name ?? "拖入周期卡"}`);
+            });
+            return;
+        }
+
+        const currentSlot = this.cycleSlots[this.roundIndex];
+        const cardName = currentSlot.card?.name ?? "未知卡牌";
+        this.showToast(`第${this.roundIndex + 1}轮结束，触发周期卡【${cardName}】。`);
+        currentSlot.bg.setFillStyle(0xccbba2, 1);
+        this.roundIndex += 1;
     }
 
     private makeButton(x: number, y: number, w: number, h: number, label: string, onClick: () => void) {
