@@ -38,6 +38,10 @@ export default class CultivationScene extends Phaser.Scene {
     private currentCharacter!: CharacterDef;
     private cycleSlots: CycleSlot[] = [];
     private roundIndex = 0;
+    private cycleStageIndex = 0;
+    private cycleStageText?: Phaser.GameObjects.Text;
+
+    private readonly cycleStageLabels = ["准备阶段", "阶段一", "阶段二", "阶段三", "阶段四"];
 
     constructor() {
         super({ key: "Cultivation" });
@@ -123,25 +127,36 @@ export default class CultivationScene extends Phaser.Scene {
             color: "#2f2419",
         });
 
-        const attrs = [
+        const leftAttrs = [
             `境界：${this.currentCharacter.realm}`,
             "境界进度：炼气 0/300",
             `当前血量：${this.currentCharacter.maxHp}/${this.currentCharacter.maxHp}`,
             "符箓：[_] [_] [_]",
             "丹药：[_] [_] [_]",
-            "精力：100/100",
             "寿元：50（炼气期）",
-            "周期：每10寿元为1周期（4轮牌）",
             "道心：100/100",
-            "正邪值：0",
             "灵石：0",
         ];
 
-        this.add.text(48, 140, attrs.join("\n"), {
+        this.add.text(48, 140, leftAttrs.join("\n"), {
             fontFamily: "serif",
             fontSize: "18px",
             color: "#3d3125",
             lineSpacing: 6,
+        });
+
+        const rightAttrs = ["精力：100/100", "灵力：50/50", "神识：30/30", "道韵：10/10"];
+        this.add.text(252, 140, rightAttrs.join("\n"), {
+            fontFamily: "serif",
+            fontSize: "18px",
+            color: "#3d3125",
+            lineSpacing: 6,
+        });
+
+        this.cycleStageText = this.add.text(252, 275, `周期：${this.cycleStageLabels[this.cycleStageIndex]}`, {
+            fontFamily: "serif",
+            fontSize: "18px",
+            color: "#3d3125",
         });
     }
 
@@ -300,10 +315,12 @@ export default class CultivationScene extends Phaser.Scene {
         if (this.roundIndex >= 4) {
             this.showToast("本周期4轮已结束，消耗10寿元并进入下一周期（占位逻辑）。");
             this.roundIndex = 0;
+            this.cycleStageIndex = 0;
             this.cycleSlots.forEach((slot, idx) => {
                 slot.bg.setFillStyle(0xe8dcc9, 0.95);
                 slot.label.setText(`第${idx + 1}轮\n${slot.card?.name ?? "拖入周期卡"}`);
             });
+            this.updateCycleStageText();
             return;
         }
 
@@ -312,6 +329,12 @@ export default class CultivationScene extends Phaser.Scene {
         this.showToast(`第${this.roundIndex + 1}轮结束，触发周期卡【${cardName}】。`);
         currentSlot.bg.setFillStyle(0xccbba2, 1);
         this.roundIndex += 1;
+        this.cycleStageIndex = Math.min(this.roundIndex, this.cycleStageLabels.length - 1);
+        this.updateCycleStageText();
+    }
+
+    private updateCycleStageText() {
+        this.cycleStageText?.setText(`周期：${this.cycleStageLabels[this.cycleStageIndex]}`);
     }
 
     private makeButton(x: number, y: number, w: number, h: number, label: string, onClick: () => void) {
