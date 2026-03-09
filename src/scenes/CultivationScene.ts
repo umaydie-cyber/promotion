@@ -129,7 +129,6 @@ export default class CultivationScene extends Phaser.Scene {
 
         const leftAttrs = [
             `境界：${this.currentCharacter.realm}`,
-            "境界进度：炼气 0/300",
             `当前血量：${this.currentCharacter.maxHp}/${this.currentCharacter.maxHp}`,
             "符箓：[_] [_] [_]",
             "丹药：[_] [_] [_]",
@@ -145,7 +144,7 @@ export default class CultivationScene extends Phaser.Scene {
             lineSpacing: 6,
         });
 
-        const rightAttrs = ["精力：100/100", "灵力：50/50", "神识：30/30", "道韵：10/10"];
+        const rightAttrs = ["精力：3/3", "灵力：0", "神识：0", "道韵：0"];
         this.add.text(252, 140, rightAttrs.join("\n"), {
             fontFamily: "serif",
             fontSize: "18px",
