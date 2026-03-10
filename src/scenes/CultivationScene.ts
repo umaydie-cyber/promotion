@@ -406,27 +406,38 @@ export default class CultivationScene extends Phaser.Scene {
         const discardX = this.scale.width - 72;
 
         this.deckPileBg = this.add.rectangle(deckX, pileY, pileW, pileH, 0xf2e8d8, 0.95).setStrokeStyle(2, 0x8b7254, 0.9);
+        this.deckPileBg.setDepth(200);
         this.deckPileText = this.add.text(deckX, pileY, "牌库\n0", {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "15px",
             color: "#3f2f20",
             align: "center",
         }).setOrigin(0.5);
+        this.deckPileText.setDepth(201);
 
         this.discardPileBg = this.add.rectangle(discardX, pileY, pileW, pileH, 0xe7ddcc, 0.95).setStrokeStyle(2, 0x8b7254, 0.9);
+        this.discardPileBg.setDepth(200);
         this.discardPileText = this.add.text(discardX, pileY, "弃牌\n0", {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "15px",
             color: "#3f2f20",
             align: "center",
         }).setOrigin(0.5);
+        this.discardPileText.setDepth(201);
+
+        this.setPileVisibility(false);
 
         this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
             if (!this.draggingCard || this.selectedCardIndex === null) return;
             const view = this.handCardViews.find((x) => x.index === this.selectedCardIndex);
             if (!view) return;
-            view.container.x = pointer.worldX - view.container.width / 2;
-            view.container.y = pointer.worldY - view.container.height / 2;
+            view.container.x = pointer.worldX;
+            view.container.y = pointer.worldY;
+        });
+
+        this.input.on("pointerup", () => {
+            if (this.selectedCardIndex === null) return;
+            this.draggingCard = false;
         });
     }
 
@@ -464,6 +475,7 @@ export default class CultivationScene extends Phaser.Scene {
         this.isPlayingCard = false;
         this.clearHandViews();
         this.drawCultivationCards(5, { animate: false });
+        this.setPileVisibility(true);
         this.updateResourceText();
         this.updateCycleStageText();
         this.updateMeridianText();
@@ -518,6 +530,7 @@ export default class CultivationScene extends Phaser.Scene {
             this.roundIndex = 0;
             this.handCards = [];
             this.clearHandViews();
+            this.setPileVisibility(false);
             this.cycleSlots.forEach((slot, idx) => {
                 slot.bg.setFillStyle(0xe8dcc9, 0.95);
                 slot.label.setText(`第${idx + 1}轮\n${slot.card?.name ?? "拖入周期卡"}`);
@@ -878,7 +891,33 @@ export default class CultivationScene extends Phaser.Scene {
 
             const bg = this.add.rectangle(x, y, cardW, cardH, 0xffffff, 0.001).setOrigin(0);
 
-            bg.setInteractive({ useHandCursor: true }).on("pointerdown", () => {
+            bg.setInteractive({ draggable: true, useHandCursor: true });
+            bg.on("dragstart", () => {
+                if (this.isPlayingCard) return;
+                this.releaseSelectedCard();
+                this.selectedCardIndex = idx;
+                this.draggingCard = true;
+                container.setDepth(5000);
+                this.tweens.add({
+                    targets: container,
+                    scale: 1.07,
+                    duration: 100,
+                    ease: "Quad.Out",
+                });
+            });
+
+            bg.on("drag", (_pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
+                if (this.selectedCardIndex !== idx || this.isPlayingCard) return;
+                container.x = dragX;
+                container.y = dragY;
+            });
+
+            bg.on("dragend", () => {
+                if (this.selectedCardIndex !== idx) return;
+                this.draggingCard = false;
+            });
+
+            bg.on("pointerdown", () => {
                 if (this.isPlayingCard) return;
                 if (this.selectedCardIndex === idx) {
                     this.tryPlaySelectedCard();
@@ -887,7 +926,6 @@ export default class CultivationScene extends Phaser.Scene {
 
                 this.releaseSelectedCard();
                 this.selectedCardIndex = idx;
-                this.draggingCard = true;
                 container.setDepth(5000);
                 this.tweens.add({
                     targets: container,
@@ -953,6 +991,13 @@ export default class CultivationScene extends Phaser.Scene {
     private updatePileText() {
         this.deckPileText?.setText(`牌库\n${this.cultivationDeck.length}/${this.cultivationDeckTotal}`);
         this.discardPileText?.setText(`弃牌\n${this.cultivationDiscard.length}`);
+    }
+
+    private setPileVisibility(visible: boolean) {
+        this.deckPileBg?.setVisible(visible);
+        this.deckPileText?.setVisible(visible);
+        this.discardPileBg?.setVisible(visible);
+        this.discardPileText?.setVisible(visible);
     }
 
     private renderCycleCardsArea() {
