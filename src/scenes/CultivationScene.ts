@@ -430,10 +430,7 @@ export default class CultivationScene extends Phaser.Scene {
     }
 
     private startCultivation() {
-        if (!this.cycleSlots.every((slot) => slot.card)) {
-            this.showToast("请先拖拽5张周期卡中的4张到周期轮次。", 1800);
-            return;
-        }
+        this.ensureCycleSlotsReady();
 
         this.cultivationStarted = true;
         this.roundIndex = 0;
@@ -478,6 +475,26 @@ export default class CultivationScene extends Phaser.Scene {
             this.setButtonVisible(this.endCycleBtn, true);
             this.setButtonEnabled(this.endCycleBtn, true);
         }
+    }
+
+    private ensureCycleSlotsReady() {
+        if (this.cycleSlots.every((slot) => slot.card)) return;
+
+        const expandedDeck: CycleCard[] = STARTER_CYCLE_DECK.flatMap((card) =>
+            Array.from({ length: card.count }, () => ({ ...card, count: 1 })),
+        );
+        const fallbackQueue = Phaser.Utils.Array.Shuffle([...expandedDeck]);
+
+        this.cycleSlots.forEach((slot, idx) => {
+            if (slot.card) return;
+            const fallback = fallbackQueue.shift();
+            if (!fallback) return;
+            slot.card = fallback;
+            slot.label.setText(`第${idx + 1}轮\n${fallback.name}`);
+            slot.bg.setFillStyle(0xe8dcc9, 0.95);
+        });
+
+        this.showToast("已自动补全周期轮次，立即开始发牌。", 1600);
     }
 
     private endCycleRound() {
