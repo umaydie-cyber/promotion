@@ -160,6 +160,8 @@ const STARTER_CULTIVATION_DECK: CultivationCardId[] = [
     "visualize",
 ];
 
+const UI_FONT_FAMILY = '"Noto Serif SC", "Source Han Serif SC", "STSong", "SimSun", serif';
+
 export default class CultivationScene extends Phaser.Scene {
     private currentCharacter!: CharacterDef;
     private cycleSlots: CycleSlot[] = [];
@@ -192,6 +194,7 @@ export default class CultivationScene extends Phaser.Scene {
     private breakthroughText?: Phaser.GameObjects.Text;
     private startCultivationBtn?: UIButton;
     private endCycleBtn?: UIButton;
+    private cycleDeckObjects: Phaser.GameObjects.GameObject[] = [];
 
     constructor() {
         super({ key: "Cultivation" });
@@ -208,7 +211,7 @@ export default class CultivationScene extends Phaser.Scene {
         this.drawInkWashBackground();
 
         this.add.text(34, 22, "修真界", {
-            fontFamily: "serif",
+            fontFamily: UI_FONT_FAMILY,
             fontSize: "46px",
             color: "#2b2118",
         });
@@ -229,8 +232,8 @@ export default class CultivationScene extends Phaser.Scene {
         });
 
         this.add.text(this.scale.width / 2, this.scale.height - 292, "周期卡牌（先拖拽填充周期，再每轮触发）", {
-            fontFamily: "serif",
-            fontSize: "28px",
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "24px",
             color: "#3a2d21",
         }).setOrigin(0.5);
 
@@ -278,7 +281,7 @@ export default class CultivationScene extends Phaser.Scene {
         panel.setStrokeStyle(2, 0x5a4b3a, 0.8);
 
         this.add.text(48, 104, `人物：${this.currentCharacter.name}`, {
-            fontFamily: "serif",
+            fontFamily: UI_FONT_FAMILY,
             fontSize: "22px",
             color: "#2f2419",
         });
@@ -294,40 +297,40 @@ export default class CultivationScene extends Phaser.Scene {
         ];
 
         this.add.text(48, 140, leftAttrs.join("\n"), {
-            fontFamily: "serif",
+            fontFamily: UI_FONT_FAMILY,
             fontSize: "18px",
             color: "#3d3125",
             lineSpacing: 6,
         });
 
         this.resourcesText = this.add.text(252, 140, "", {
-            fontFamily: "serif",
+            fontFamily: UI_FONT_FAMILY,
             fontSize: "18px",
             color: "#3d3125",
             lineSpacing: 6,
         });
 
         this.meridianText = this.add.text(252, 238, "", {
-            fontFamily: "serif",
+            fontFamily: UI_FONT_FAMILY,
             fontSize: "16px",
             color: "#3d3125",
             lineSpacing: 4,
         });
 
         this.cycleStageText = this.add.text(252, 298, `周期：${this.cycleStageLabels[this.cycleStageIndex]}`, {
-            fontFamily: "serif",
+            fontFamily: UI_FONT_FAMILY,
             fontSize: "18px",
             color: "#3d3125",
         });
 
         this.cultivationRoundText = this.add.text(252, 326, "修炼轮次：未开始", {
-            fontFamily: "serif",
+            fontFamily: UI_FONT_FAMILY,
             fontSize: "16px",
             color: "#3d3125",
         });
 
         this.cultivationStatusText = this.add.text(48, 392, "点击【开始修行】后抽5张修炼卡进入第一轮出牌。", {
-            fontFamily: "serif",
+            fontFamily: UI_FONT_FAMILY,
             fontSize: "14px",
             color: "#4a3a2b",
             wordWrap: { width: 390 },
@@ -336,7 +339,7 @@ export default class CultivationScene extends Phaser.Scene {
         this.breakthroughBtn = this.add.rectangle(336, 360, 110, 30, 0x6b5b46, 0.55).setOrigin(0.5);
         this.breakthroughBtn.setStrokeStyle(1, 0x9c8a73, 0.8);
         this.breakthroughText = this.add.text(336, 360, "筑基未解锁", {
-            fontFamily: "serif",
+            fontFamily: UI_FONT_FAMILY,
             fontSize: "14px",
             color: "#d8ccbc",
         }).setOrigin(0.5);
@@ -346,9 +349,10 @@ export default class CultivationScene extends Phaser.Scene {
     }
 
     private renderCultivationArea() {
-        this.add.text(this.scale.width / 2, 438, "修炼手牌区（点击卡牌打出）", {
-            fontFamily: "serif",
-            fontSize: "24px",
+        this.add.rectangle(this.scale.width / 2, 478, 752, 36, 0xe4d7c3, 0.4).setStrokeStyle(1, 0xc4b395, 0.65);
+        this.add.text(this.scale.width / 2, 478, "修炼手牌区（点击卡牌打出）", {
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "22px",
             color: "#3a2d21",
         }).setOrigin(0.5);
     }
@@ -370,6 +374,12 @@ export default class CultivationScene extends Phaser.Scene {
         this.renMaiActive = false;
         this.duMaiSpiritPerTurn = 0;
         this.cultivationDeck = Phaser.Utils.Array.Shuffle(STARTER_CULTIVATION_DECK.map((id) => CULTIVATION_CARD_DEFS[id]));
+        this.cycleDeckObjects.forEach((obj) => {
+            obj.setVisible(false);
+            if ("disableInteractive" in obj) {
+                (obj as Phaser.GameObjects.GameObject & { disableInteractive: () => void }).disableInteractive();
+            }
+        });
         this.cultivationDiscard = [];
         this.handCards = [];
         this.clearHandViews();
@@ -570,11 +580,11 @@ export default class CultivationScene extends Phaser.Scene {
         if (this.handCards.length === 0) return;
 
         const cardW = 136;
-        const cardH = 178;
-        const gap = 12;
+        const cardH = 166;
+        const gap = 16;
         const totalW = this.handCards.length * cardW + (this.handCards.length - 1) * gap;
         const startX = (this.scale.width - totalW) / 2;
-        const y = 472;
+        const y = 500;
 
         this.handCards.forEach((card, idx) => {
             const x = startX + idx * (cardW + gap);
@@ -584,15 +594,15 @@ export default class CultivationScene extends Phaser.Scene {
             bg.setStrokeStyle(2, 0x4d4033, 0.95);
 
             const title = this.add.text(x + cardW / 2, y + 9, `${card.name}（${card.realm}）`, {
-                fontFamily: "serif",
-                fontSize: "18px",
+                fontFamily: UI_FONT_FAMILY,
+                fontSize: "17px",
                 color: "#2e2419",
             }).setOrigin(0.5, 0);
 
             const energyBadge = this.add.rectangle(x + 20, y + 20, 24, 24, 0x2762c2, 0.95).setOrigin(0.5);
             energyBadge.setStrokeStyle(1, 0xc2ddff, 0.95);
             const energyCostText = this.add.text(energyBadge.x, energyBadge.y, `${card.cost.energy}`, {
-                fontFamily: "sans-serif",
+                fontFamily: UI_FONT_FAMILY,
                 fontSize: "14px",
                 color: "#ffffff",
             }).setOrigin(0.5);
@@ -601,22 +611,22 @@ export default class CultivationScene extends Phaser.Scene {
             const spiritBadge = this.add.rectangle(x + cardW - 20, y + 20, 24, 24, spiritCost > 0 ? 0x7c3aed : 0x5f5f5f, 0.95).setOrigin(0.5);
             spiritBadge.setStrokeStyle(1, 0xe3d7ff, 0.95);
             const spiritCostText = this.add.text(spiritBadge.x, spiritBadge.y, `${spiritCost}`, {
-                fontFamily: "sans-serif",
+                fontFamily: UI_FONT_FAMILY,
                 fontSize: "13px",
                 color: "#ffffff",
             }).setOrigin(0.5);
 
             const descText = this.add.text(x + 8, y + 48, `${card.desc}\n${card.upgradedDesc}`, {
-                fontFamily: "serif",
-                fontSize: "12px",
+                fontFamily: UI_FONT_FAMILY,
+                fontSize: "11px",
                 color: "#4b3f31",
                 wordWrap: { width: cardW - 16 },
-                lineSpacing: 3,
+                lineSpacing: 2,
                 maxLines: 7,
             });
 
             const playTip = this.add.text(x + cardW / 2, y + cardH - 12, "点击打出", {
-                fontFamily: "serif",
+                fontFamily: UI_FONT_FAMILY,
                 fontSize: "12px",
                 color: "#6a5842",
             }).setOrigin(0.5, 1);
@@ -640,7 +650,7 @@ export default class CultivationScene extends Phaser.Scene {
         const slotH = 92;
         const slotGap = 14;
         const slotStartX = (this.scale.width - (slotW * 4 + slotGap * 3)) / 2;
-        const slotY = this.scale.height - 248;
+        const slotY = this.scale.height - 316;
 
         this.cycleSlots = [];
         for (let i = 0; i < 4; i++) {
@@ -650,8 +660,8 @@ export default class CultivationScene extends Phaser.Scene {
                 .setOrigin(0)
                 .setStrokeStyle(2, 0x6c5b47, 0.8);
             const label = this.add.text(x + slotW / 2, slotY + slotH / 2, `第${i + 1}轮\n拖入周期卡`, {
-                fontFamily: "serif",
-                fontSize: "18px",
+                fontFamily: UI_FONT_FAMILY,
+                fontSize: "16px",
                 color: "#695744",
                 align: "center",
             }).setOrigin(0.5);
@@ -663,16 +673,17 @@ export default class CultivationScene extends Phaser.Scene {
         }
 
         const cardW = 118;
-        const cardH = 138;
+        const cardH = 126;
         const cardGap = 16;
         const expandedDeck: CycleCard[] = STARTER_CYCLE_DECK.flatMap((card) =>
             Array.from({ length: card.count }, () => ({ ...card, count: 1 })),
         );
         const cardsTotalW = expandedDeck.length * cardW + (expandedDeck.length - 1) * cardGap;
         const startX = (this.scale.width - cardsTotalW) / 2;
-        const cardY = this.scale.height - cardH - 22;
+        const cardY = this.scale.height - cardH - 18;
 
         const cycleCardViews: CycleCardView[] = [];
+        this.cycleDeckObjects = [];
 
         expandedDeck.forEach((card, idx) => {
             const x = startX + idx * (cardW + cardGap);
@@ -682,20 +693,21 @@ export default class CultivationScene extends Phaser.Scene {
                 .setStrokeStyle(2, 0x4d4033, 0.95)
                 .setInteractive({ draggable: true, useHandCursor: true });
 
-            this.add.rectangle(x + 8, cardY + 8, cardW - 16, 44, 0xe0d2bb, 0.58).setOrigin(0);
-            this.add.text(x + cardW / 2, cardY + 18, card.name, {
-                fontFamily: "serif",
-                fontSize: "24px",
+            const header = this.add.rectangle(x + 8, cardY + 8, cardW - 16, 44, 0xe0d2bb, 0.58).setOrigin(0);
+            const nameText = this.add.text(x + cardW / 2, cardY + 18, card.name, {
+                fontFamily: UI_FONT_FAMILY,
+                fontSize: "21px",
                 color: "#2e2419",
             }).setOrigin(0.5, 0);
 
-            this.add.text(x + 10, cardY + 66, card.desc, {
-                fontFamily: "serif",
+            const descText = this.add.text(x + 10, cardY + 66, card.desc, {
+                fontFamily: UI_FONT_FAMILY,
                 fontSize: "14px",
                 color: "#5c4d3f",
                 wordWrap: { width: cardW - 20 },
             });
 
+            this.cycleDeckObjects.push(bg, header, nameText, descText);
             cycleCardViews.push({ card, bg, originX: x, originY: cardY });
         });
 
@@ -752,7 +764,7 @@ export default class CultivationScene extends Phaser.Scene {
 
                 const deleteText = this.add
                     .text(deleteBtn.x, deleteBtn.y - 1, "×", {
-                        fontFamily: "serif",
+                        fontFamily: UI_FONT_FAMILY,
                         fontSize: "15px",
                         color: "#f8e7d5",
                     })
@@ -817,7 +829,7 @@ export default class CultivationScene extends Phaser.Scene {
             .setDepth(11);
 
         const btnText = this.add.text(x + w / 2, y + h / 2, label, {
-            fontFamily: "serif",
+            fontFamily: UI_FONT_FAMILY,
             fontSize: "15px",
             color: "#f6ecdc",
         }).setOrigin(0.5).setDepth(12);
@@ -865,7 +877,7 @@ export default class CultivationScene extends Phaser.Scene {
     private showToast(msg: string, duration = 1500) {
         const toast = this.add
             .text(this.scale.width / 2, this.scale.height - 42, msg, {
-                fontFamily: "serif",
+                fontFamily: UI_FONT_FAMILY,
                 fontSize: "16px",
                 color: "#f9f3e8",
                 backgroundColor: "#33281d",
