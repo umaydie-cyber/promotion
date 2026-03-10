@@ -220,6 +220,7 @@ export default class CultivationScene extends Phaser.Scene {
     private selectedCardIndex: number | null = null;
     private draggingCard = false;
     private isPlayingCard = false;
+    private deckPileBg?: Phaser.GameObjects.Rectangle;
     private discardPileBg?: Phaser.GameObjects.Rectangle;
     private discardPileText?: Phaser.GameObjects.Text;
     private deckPileText?: Phaser.GameObjects.Text;
@@ -397,18 +398,24 @@ export default class CultivationScene extends Phaser.Scene {
             color: "#6b5a45",
         }).setOrigin(0.5, 0);
 
-        this.add.rectangle(this.scale.width - 170, 544, 86, 112, 0xf2e8d8, 0.9).setStrokeStyle(2, 0x8b7254, 0.9);
-        this.deckPileText = this.add.text(this.scale.width - 170, 544, "牌库\n0", {
+        const pileY = 548;
+        const pileW = 68;
+        const pileH = 90;
+        const deckX = 72;
+        const discardX = this.scale.width - 72;
+
+        this.deckPileBg = this.add.rectangle(deckX, pileY, pileW, pileH, 0xf2e8d8, 0.95).setStrokeStyle(2, 0x8b7254, 0.9);
+        this.deckPileText = this.add.text(deckX, pileY, "牌库\n0", {
             fontFamily: UI_FONT_FAMILY,
-            fontSize: "18px",
+            fontSize: "15px",
             color: "#3f2f20",
             align: "center",
         }).setOrigin(0.5);
 
-        this.discardPileBg = this.add.rectangle(this.scale.width - 70, 544, 86, 112, 0xe7ddcc, 0.9).setStrokeStyle(2, 0x8b7254, 0.9);
-        this.discardPileText = this.add.text(this.scale.width - 70, 544, "弃牌\n0", {
+        this.discardPileBg = this.add.rectangle(discardX, pileY, pileW, pileH, 0xe7ddcc, 0.95).setStrokeStyle(2, 0x8b7254, 0.9);
+        this.discardPileText = this.add.text(discardX, pileY, "弃牌\n0", {
             fontFamily: UI_FONT_FAMILY,
-            fontSize: "18px",
+            fontSize: "15px",
             color: "#3f2f20",
             align: "center",
         }).setOrigin(0.5);
@@ -423,10 +430,7 @@ export default class CultivationScene extends Phaser.Scene {
     }
 
     private startCultivation() {
-        if (!this.cycleSlots.every((slot) => slot.card)) {
-            this.showToast("请先拖拽5张周期卡中的4张到周期轮次。", 1800);
-            return;
-        }
+        this.ensureCycleSlotsReady();
 
         this.cultivationStarted = true;
         this.roundIndex = 0;
@@ -471,6 +475,26 @@ export default class CultivationScene extends Phaser.Scene {
             this.setButtonVisible(this.endCycleBtn, true);
             this.setButtonEnabled(this.endCycleBtn, true);
         }
+    }
+
+    private ensureCycleSlotsReady() {
+        if (this.cycleSlots.every((slot) => slot.card)) return;
+
+        const expandedDeck: CycleCard[] = STARTER_CYCLE_DECK.flatMap((card) =>
+            Array.from({ length: card.count }, () => ({ ...card, count: 1 })),
+        );
+        const fallbackQueue = Phaser.Utils.Array.Shuffle([...expandedDeck]);
+
+        this.cycleSlots.forEach((slot, idx) => {
+            if (slot.card) return;
+            const fallback = fallbackQueue.shift();
+            if (!fallback) return;
+            slot.card = fallback;
+            slot.label.setText(`第${idx + 1}轮\n${fallback.name}`);
+            slot.bg.setFillStyle(0xe8dcc9, 0.95);
+        });
+
+        this.showToast("已自动补全周期轮次，立即开始发牌。", 1600);
     }
 
     private endCycleRound() {
@@ -577,7 +601,7 @@ export default class CultivationScene extends Phaser.Scene {
             for (let i = 0; i < drawn; i += 1) {
                 const view = this.handCardViews.find((x) => x.index === startIdx + i);
                 if (!view) continue;
-                view.container.setPosition(this.scale.width - 170, 544);
+                view.container.setPosition(this.deckPileBg?.x ?? 72, this.deckPileBg?.y ?? 548);
                 view.container.setScale(0.45);
                 view.container.setAlpha(0);
                 this.tweens.add({
