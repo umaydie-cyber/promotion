@@ -46,6 +46,8 @@ type HandCardView = {
     container: Phaser.GameObjects.Container;
 };
 
+type RealmTier = "炼气" | "筑基" | "金丹" | "元婴" | "化神";
+
 type UIButton = {
     bg: Phaser.GameObjects.Rectangle;
     text: Phaser.GameObjects.Text;
@@ -161,6 +163,25 @@ const STARTER_CULTIVATION_DECK: CultivationCardId[] = [
 ];
 
 const UI_FONT_FAMILY = '"Noto Serif SC", "Source Han Serif SC", "STSong", "SimSun", serif';
+
+const REALM_BADGE_STYLE: Record<RealmTier, { fill: number; stroke: number; text: string }> = {
+    炼气: { fill: 0xf6f1e8, stroke: 0xcbc0aa, text: "#433628" },
+    筑基: { fill: 0x4e8f4a, stroke: 0x2e5f2f, text: "#f2fce9" },
+    金丹: { fill: 0x3f78c9, stroke: 0x274f90, text: "#ecf5ff" },
+    元婴: { fill: 0x8452c7, stroke: 0x5a3691, text: "#f5edff" },
+    化神: { fill: 0xdb8b2d, stroke: 0xa56317, text: "#fff6e6" },
+};
+
+const CULTIVATION_ART_STYLE: Record<CultivationCardId, { colorA: number; colorB: number; icon: string }> = {
+    qi_infusion: { colorA: 0xb7d7ff, colorB: 0x5c8dd8, icon: "气" },
+    epiphany: { colorA: 0xffd898, colorB: 0xc98438, icon: "悟" },
+    channel_qi: { colorA: 0xc5f4b2, colorB: 0x5da959, icon: "灵" },
+    focus: { colorA: 0xd8e4ff, colorB: 0x7289d9, icon: "神" },
+    visualize: { colorA: 0xf3d7ff, colorB: 0xaa72c4, icon: "观" },
+    micro_orbit: { colorA: 0xc4ebff, colorB: 0x4c94be, icon: "周" },
+    lingtai: { colorA: 0xccdcff, colorB: 0x6a81cb, icon: "台" },
+    spirit_sword: { colorA: 0xffd1d1, colorB: 0xc16161, icon: "剑" },
+};
 
 export default class CultivationScene extends Phaser.Scene {
     private currentCharacter!: CharacterDef;
@@ -344,7 +365,7 @@ export default class CultivationScene extends Phaser.Scene {
 
     private renderCultivationArea() {
         this.add.rectangle(this.scale.width / 2, 478, 752, 36, 0xe4d7c3, 0.4).setStrokeStyle(1, 0xc4b395, 0.65);
-        this.add.text(this.scale.width / 2, 478, "修炼手牌区（点击卡牌打出）", {
+        this.add.text(this.scale.width / 2, 478, "修炼手牌区", {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "22px",
             color: "#3a2d21",
@@ -573,8 +594,8 @@ export default class CultivationScene extends Phaser.Scene {
         this.clearHandViews();
         if (this.handCards.length === 0) return;
 
-        const cardW = 136;
-        const cardH = 166;
+        const cardW = 168;
+        const cardH = 228;
         const gap = 16;
         const totalW = this.handCards.length * cardW + (this.handCards.length - 1) * gap;
         const startX = (this.scale.width - totalW) / 2;
@@ -584,52 +605,116 @@ export default class CultivationScene extends Phaser.Scene {
             const x = startX + idx * (cardW + gap);
             const container = this.add.container(0, 0);
 
-            const bg = this.add.rectangle(x, y, cardW, cardH, 0xf5efe3, 0.98).setOrigin(0);
-            bg.setStrokeStyle(2, 0x4d4033, 0.95);
+            const realmTier = (card.realm as RealmTier) ?? "炼气";
+            const realmBadge = REALM_BADGE_STYLE[realmTier] ?? REALM_BADGE_STYLE.炼气;
+            const artStyle = CULTIVATION_ART_STYLE[card.id];
+            const spiritCost = card.cost.spirit ?? 0;
 
-            const title = this.add.text(x + cardW / 2, y + 9, `${card.name}（${card.realm}）`, {
+            const cardShell = this.add.graphics();
+            cardShell.fillStyle(0x2a221a, 0.82);
+            cardShell.fillRoundedRect(x - 4, y - 4, cardW + 8, cardH + 8, 18);
+            cardShell.fillStyle(0xf3ebdc, 1);
+            cardShell.fillRoundedRect(x, y, cardW, cardH, 14);
+            cardShell.lineStyle(4, 0x7f6f58, 0.95);
+            cardShell.strokeRoundedRect(x, y, cardW, cardH, 14);
+
+            const marble = this.add.graphics();
+            marble.lineStyle(1.2, 0xe6dbc7, 0.9);
+            for (let i = 0; i < 9; i++) {
+                const offset = 12 + i * 18;
+                marble.beginPath();
+                marble.moveTo(x + 6, y + offset);
+                marble.quadraticCurveTo(x + cardW * 0.45, y + offset - 8, x + cardW - 8, y + offset + 4);
+                marble.strokePath();
+            }
+
+            const frame = this.add.graphics();
+            frame.fillStyle(0xdbc9ad, 0.95);
+            frame.fillRoundedRect(x + 10, y + 34, cardW - 20, 88, 10);
+            frame.lineStyle(2, 0x8d7356, 0.95);
+            frame.strokeRoundedRect(x + 10, y + 34, cardW - 20, 88, 10);
+
+            const artBg = this.add.graphics();
+            artBg.fillGradientStyle(artStyle.colorA, artStyle.colorA, artStyle.colorB, artStyle.colorB, 1);
+            artBg.fillRoundedRect(x + 16, y + 40, cardW - 32, 72, 8);
+
+            const artName = this.add.text(x + cardW / 2, y + 56, card.name, {
                 fontFamily: UI_FONT_FAMILY,
-                fontSize: "17px",
+                fontSize: "19px",
                 color: "#2e2419",
             }).setOrigin(0.5, 0);
 
-            const energyBadge = this.add.rectangle(x + 20, y + 20, 24, 24, 0x2762c2, 0.95).setOrigin(0.5);
-            energyBadge.setStrokeStyle(1, 0xc2ddff, 0.95);
+            const artIcon = this.add.text(x + cardW / 2, y + 86, artStyle.icon, {
+                fontFamily: UI_FONT_FAMILY,
+                fontSize: "30px",
+                color: "#fff8eb",
+            }).setOrigin(0.5);
+
+            const energyBadge = this.add.circle(x + 20, y + 20, 16, 0x2c74d1, 1);
+            energyBadge.setStrokeStyle(3, 0xd8ebff, 1);
             const energyCostText = this.add.text(energyBadge.x, energyBadge.y, `${card.cost.energy}`, {
                 fontFamily: UI_FONT_FAMILY,
-                fontSize: "14px",
+                fontSize: "18px",
                 color: "#ffffff",
+                fontStyle: "bold",
             }).setOrigin(0.5);
 
-            const spiritCost = card.cost.spirit ?? 0;
-            const spiritBadge = this.add.rectangle(x + cardW - 20, y + 20, 24, 24, spiritCost > 0 ? 0x7c3aed : 0x5f5f5f, 0.95).setOrigin(0.5);
-            spiritBadge.setStrokeStyle(1, 0xe3d7ff, 0.95);
+            const spiritBadge = this.add.circle(x + cardW - 20, y + 20, 16, spiritCost > 0 ? 0x9454e6 : 0x69737f, 1);
+            spiritBadge.setStrokeStyle(3, spiritCost > 0 ? 0xe7d5ff : 0xc4ccd8, 1);
             const spiritCostText = this.add.text(spiritBadge.x, spiritBadge.y, `${spiritCost}`, {
                 fontFamily: UI_FONT_FAMILY,
-                fontSize: "13px",
+                fontSize: "18px",
                 color: "#ffffff",
+                fontStyle: "bold",
             }).setOrigin(0.5);
 
-            const descText = this.add.text(x + 8, y + 48, `${card.desc}\n${card.upgradedDesc}`, {
+            const realmEllipse = this.add.ellipse(x + cardW / 2, y + 130, 76, 24, realmBadge.fill, 1);
+            realmEllipse.setStrokeStyle(2, realmBadge.stroke, 1);
+            const realmText = this.add.text(x + cardW / 2, y + 130, card.realm, {
                 fontFamily: UI_FONT_FAMILY,
-                fontSize: "11px",
-                color: "#4b3f31",
-                wordWrap: { width: cardW - 16 },
-                lineSpacing: 2,
-                maxLines: 7,
-            });
+                fontSize: "14px",
+                color: realmBadge.text,
+                fontStyle: "bold",
+            }).setOrigin(0.5);
 
-            const playTip = this.add.text(x + cardW / 2, y + cardH - 12, "点击打出", {
+            const descPanel = this.add.graphics();
+            descPanel.fillStyle(0xe8dcc7, 0.96);
+            descPanel.fillRoundedRect(x + 12, y + 144, cardW - 24, 72, 8);
+            descPanel.lineStyle(1.5, 0xa48a68, 0.95);
+            descPanel.strokeRoundedRect(x + 12, y + 144, cardW - 24, 72, 8);
+
+            const descText = this.add.text(x + 20, y + 152, `${card.desc}\n${card.upgradedDesc}`, {
                 fontFamily: UI_FONT_FAMILY,
                 fontSize: "12px",
-                color: "#6a5842",
-            }).setOrigin(0.5, 1);
+                color: "#4b3f31",
+                wordWrap: { width: cardW - 40 },
+                lineSpacing: 2,
+                maxLines: 5,
+            });
+
+            const bg = this.add.rectangle(x, y, cardW, cardH, 0xffffff, 0.001).setOrigin(0);
 
             bg.setInteractive({ useHandCursor: true }).on("pointerdown", () => {
                 this.playCultivationCard(card);
             });
 
-            container.add([bg, title, energyBadge, energyCostText, spiritBadge, spiritCostText, descText, playTip]);
+            container.add([
+                cardShell,
+                marble,
+                frame,
+                artBg,
+                artName,
+                artIcon,
+                energyBadge,
+                energyCostText,
+                spiritBadge,
+                spiritCostText,
+                realmEllipse,
+                realmText,
+                descPanel,
+                descText,
+                bg,
+            ]);
             this.handCardViews.push({ def: card, container });
         });
     }
