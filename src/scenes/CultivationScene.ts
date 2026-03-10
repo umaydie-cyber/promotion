@@ -61,14 +61,6 @@ type UIButton = {
     enabled: boolean;
 };
 
-type HoldButton = {
-    bg: Phaser.GameObjects.Ellipse;
-    shadow: Phaser.GameObjects.Ellipse;
-    ring: Phaser.GameObjects.Arc;
-    text: Phaser.GameObjects.Text;
-    enabled: boolean;
-};
-
 type HandLayout = {
     cardW: number;
     cardH: number;
@@ -247,10 +239,7 @@ export default class CultivationScene extends Phaser.Scene {
     private meridianText?: Phaser.GameObjects.Text;
     private breakthroughBtn?: Phaser.GameObjects.Rectangle;
     private breakthroughText?: Phaser.GameObjects.Text;
-    private startCultivationBtn?: UIButton;
-    private endCycleBtn?: HoldButton;
-    private endCycleHoldTimer?: Phaser.Time.TimerEvent;
-    private endCycleHoldTriggered = false;
+    private endCycleBtn?: UIButton;
     private cycleDeckObjects: Phaser.GameObjects.GameObject[] = [];
     private cycleSlotObjects: Phaser.GameObjects.GameObject[] = [];
 
@@ -292,12 +281,13 @@ export default class CultivationScene extends Phaser.Scene {
         this.renderCycleCardsArea();
         this.renderCultivationArea();
 
-        this.startCultivationBtn = this.makeButton(this.scale.width - 178, this.scale.height - 278, 140, 36, "开始修行", () => {
-            this.startCultivation();
+        this.endCycleBtn = this.makeButton(this.scale.width - 176, this.scale.height - 278, 140, 36, "结束回合", () => {
+            this.endCycleRound();
         });
+        this.setButtonVisible(this.endCycleBtn, true);
+        this.setButtonEnabled(this.endCycleBtn, true);
 
-        this.endCycleBtn = this.makeHoldEndCycleButton();
-        this.setButtonVisible(this.endCycleBtn, false);
+        this.startCultivation();
 
         this.add
             .text(this.scale.width - 18, 12, "⛶", { fontSize: "22px", color: "#3a2d21" })
@@ -379,7 +369,7 @@ export default class CultivationScene extends Phaser.Scene {
             color: "#3d3125",
         });
 
-        this.cultivationStatusText = this.add.text(48, 334, "点击【开始修行】后抽5张修炼卡进入第一轮出牌。", {
+        this.cultivationStatusText = this.add.text(48, 334, "已自动开始修行：先洗牌并抽5张，当前可直接进入出牌阶段。", {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "14px",
             color: "#4a3a2b",
@@ -464,6 +454,11 @@ export default class CultivationScene extends Phaser.Scene {
     }
 
     private startCultivation() {
+        if (this.cultivationStarted) {
+            this.showToast("修行已开始，请点击结束回合推进。", 1200);
+            return;
+        }
+
         this.ensureCycleSlotsReady();
 
         this.cultivationStarted = true;
@@ -503,10 +498,6 @@ export default class CultivationScene extends Phaser.Scene {
         this.updateMeridianText();
         this.updateRoundText();
         this.showStatus("修行开始：已抽5张修炼卡，进入第一轮出牌。", "#2f2419");
-        if (this.startCultivationBtn) {
-            this.setButtonVisible(this.startCultivationBtn, false);
-            this.setButtonEnabled(this.startCultivationBtn, false);
-        }
         if (this.endCycleBtn) {
             this.setButtonVisible(this.endCycleBtn, true);
             this.setButtonEnabled(this.endCycleBtn, true);
@@ -535,7 +526,7 @@ export default class CultivationScene extends Phaser.Scene {
 
     private endCycleRound() {
         if (!this.cultivationStarted) {
-            this.showToast("请先点击开始修行。", 1200);
+            this.showToast("修行尚未开始，正在准备新一轮。", 1200);
             return;
         }
 
@@ -559,15 +550,8 @@ export default class CultivationScene extends Phaser.Scene {
             });
             this.updateCycleStageText();
             this.updateRoundText();
-            this.showStatus("本周期修行结束，可重新点击开始修行进入下一周期。", "#4a3a2b");
-            if (this.startCultivationBtn) {
-                this.setButtonVisible(this.startCultivationBtn, true);
-                this.setButtonEnabled(this.startCultivationBtn, true);
-            }
-            if (this.endCycleBtn) {
-                this.setButtonEnabled(this.endCycleBtn, false);
-                this.setButtonVisible(this.endCycleBtn, false);
-            }
+            this.showStatus("本周期修行结束，已重新洗牌并进入下一周期。", "#4a3a2b");
+            this.startCultivation();
             return;
         }
 
@@ -1291,113 +1275,24 @@ export default class CultivationScene extends Phaser.Scene {
         return button;
     }
 
-    private makeHoldEndCycleButton(): HoldButton {
-        const x = this.scale.width - 72;
-        const y = 622;
-        const radius = 40;
-
-        const shadow = this.add.ellipse(x + 2, y + 3, radius * 2, radius * 2, 0x1f1811, 0.24).setDepth(9);
-        const btn = this.add
-            .ellipse(x, y, radius * 2, radius * 2, 0x4b3d2f, 0.96)
-            .setDepth(10)
-            .setStrokeStyle(2, 0x86745f, 0.95)
-            .setInteractive({ useHandCursor: true });
-
-        const ring = this.add
-            .arc(x, y, radius + 7, -90, -90, false, 0xe7d6b8, 0.95)
-            .setDepth(11)
-            .setStrokeStyle(4, 0xe7d6b8, 0.95);
-        ring.setVisible(false);
-
-        const text = this.add
-            .text(x, y, "长按\n结束", {
-                fontFamily: UI_FONT_FAMILY,
-                fontSize: "14px",
-                color: "#f6ecdc",
-                align: "center",
-            })
-            .setOrigin(0.5)
-            .setDepth(12);
-
-        const holdMs = 550;
-        const onPressRelease = (isPointerOut = false) => {
-            if (this.endCycleHoldTimer) {
-                this.endCycleHoldTimer.remove(false);
-                this.endCycleHoldTimer = undefined;
-            }
-            btn.setScale(1);
-            shadow.setScale(1);
-            ring.setVisible(false);
-            ring.setEndAngle(-90, false);
-            if (!this.endCycleHoldTriggered && !isPointerOut) {
-                this.showToast("请长按结束周期", 900);
-            }
-            this.endCycleHoldTriggered = false;
-        };
-
-        btn.on("pointerdown", () => {
-            if (!button.enabled) return;
-            this.endCycleHoldTriggered = false;
-            btn.setScale(0.96);
-            shadow.setScale(0.96);
-            ring.setVisible(true);
-            ring.setEndAngle(-90, false);
-            this.endCycleHoldTimer = this.time.delayedCall(holdMs, () => {
-                this.endCycleHoldTriggered = true;
-                this.endCycleRound();
-                onPressRelease();
-            });
-            this.tweens.add({
-                targets: ring,
-                props: { endAngle: 270 },
-                duration: holdMs,
-                ease: "Linear",
-            });
-        });
-
-        btn.on("pointerup", () => onPressRelease());
-        btn.on("pointerout", () => onPressRelease(true));
-
-        const button: HoldButton = { bg: btn, shadow, ring, text, enabled: true };
-        return button;
-    }
-
-    private setButtonVisible(button: UIButton | HoldButton, visible: boolean) {
+    private setButtonVisible(button: UIButton, visible: boolean) {
         button.bg.setVisible(visible);
         button.text.setVisible(visible);
         button.shadow.setVisible(visible);
-        if ("shine" in button) {
-            button.shine.setVisible(visible);
-        }
-        if ("ring" in button) {
-            button.ring.setVisible(false);
-        }
+        button.shine.setVisible(visible);
     }
 
-    private setButtonEnabled(button: UIButton | HoldButton, enabled: boolean) {
+    private setButtonEnabled(button: UIButton, enabled: boolean) {
         button.enabled = enabled;
         if (enabled) {
             button.bg.setFillStyle(0x4b3d2f, 0.94);
             button.bg.setInteractive({ useHandCursor: true });
             button.text.setColor("#f6ecdc");
-            if ("ring" in button) {
-                button.ring.setVisible(false);
-                button.bg.setScale(1);
-                button.shadow.setScale(1);
-            }
             return;
         }
         button.bg.disableInteractive();
         button.bg.setFillStyle(0x7a7a7a, 0.95);
         button.text.setColor("#dedede");
-        if ("ring" in button) {
-            button.ring.setVisible(false);
-            if (this.endCycleHoldTimer) {
-                this.endCycleHoldTimer.remove(false);
-                this.endCycleHoldTimer = undefined;
-            }
-            this.endCycleHoldTriggered = false;
-        }
     }
 
     private showToast(msg: string, duration = 1500) {
