@@ -215,6 +215,7 @@ export default class CultivationScene extends Phaser.Scene {
 
     private cultivationDeck: CultivationCardDef[] = [];
     private cultivationDiscard: CultivationCardDef[] = [];
+    private cultivationDeckTotal = 0;
     private handCards: CultivationCardDef[] = [];
     private handCardViews: HandCardView[] = [];
     private selectedCardIndex: number | null = null;
@@ -443,6 +444,7 @@ export default class CultivationScene extends Phaser.Scene {
         this.renMaiActive = false;
         this.duMaiSpiritPerTurn = 0;
         this.cultivationDeck = Phaser.Utils.Array.Shuffle(STARTER_CULTIVATION_DECK.map((id) => CULTIVATION_CARD_DEFS[id]));
+        this.cultivationDeckTotal = this.cultivationDeck.length;
         this.cycleDeckObjects.forEach((obj) => {
             obj.setVisible(false);
             if ("disableInteractive" in obj) {
@@ -461,7 +463,7 @@ export default class CultivationScene extends Phaser.Scene {
         this.draggingCard = false;
         this.isPlayingCard = false;
         this.clearHandViews();
-        this.drawCultivationCards(5);
+        this.drawCultivationCards(5, { animate: false });
         this.updateResourceText();
         this.updateCycleStageText();
         this.updateMeridianText();
@@ -579,7 +581,8 @@ export default class CultivationScene extends Phaser.Scene {
         this.updateResourceText();
     }
 
-    public drawCultivationCards(count: number) {
+    public drawCultivationCards(count: number, options?: { animate?: boolean }) {
+        const animate = options?.animate ?? true;
         const startIdx = this.handCards.length;
         let drawn = 0;
         for (let i = 0; i < count; i += 1) {
@@ -597,7 +600,7 @@ export default class CultivationScene extends Phaser.Scene {
         this.renderHandCards();
         this.updatePileText();
 
-        if (drawn > 0) {
+        if (drawn > 0 && animate) {
             for (let i = 0; i < drawn; i += 1) {
                 const view = this.handCardViews.find((x) => x.index === startIdx + i);
                 if (!view) continue;
@@ -948,7 +951,7 @@ export default class CultivationScene extends Phaser.Scene {
     }
 
     private updatePileText() {
-        this.deckPileText?.setText(`牌库\n${this.cultivationDeck.length}`);
+        this.deckPileText?.setText(`牌库\n${this.cultivationDeck.length}/${this.cultivationDeckTotal}`);
         this.discardPileText?.setText(`弃牌\n${this.cultivationDiscard.length}`);
     }
 
