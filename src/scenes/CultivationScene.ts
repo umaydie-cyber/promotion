@@ -1303,7 +1303,10 @@ export default class CultivationScene extends Phaser.Scene {
             .setStrokeStyle(2, 0x86745f, 0.95)
             .setInteractive({ useHandCursor: true });
 
-        const ring = this.add.arc(x, y, radius + 7, -90, -90, false, 0xe7d6b8, 0.95).setDepth(11).setLineWidth(4, 4);
+        const ring = this.add
+            .arc(x, y, radius + 7, -90, -90, false, 0xe7d6b8, 0.95)
+            .setDepth(11)
+            .setStrokeStyle(4, 0xe7d6b8, 0.95);
         ring.setVisible(false);
 
         const text = this.add
