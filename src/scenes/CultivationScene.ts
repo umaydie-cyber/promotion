@@ -220,6 +220,7 @@ export default class CultivationScene extends Phaser.Scene {
     private selectedCardIndex: number | null = null;
     private draggingCard = false;
     private isPlayingCard = false;
+    private deckPileBg?: Phaser.GameObjects.Rectangle;
     private discardPileBg?: Phaser.GameObjects.Rectangle;
     private discardPileText?: Phaser.GameObjects.Text;
     private deckPileText?: Phaser.GameObjects.Text;
@@ -397,18 +398,24 @@ export default class CultivationScene extends Phaser.Scene {
             color: "#6b5a45",
         }).setOrigin(0.5, 0);
 
-        this.add.rectangle(this.scale.width - 170, 544, 86, 112, 0xf2e8d8, 0.9).setStrokeStyle(2, 0x8b7254, 0.9);
-        this.deckPileText = this.add.text(this.scale.width - 170, 544, "牌库\n0", {
+        const pileY = 548;
+        const pileW = 68;
+        const pileH = 90;
+        const deckX = 72;
+        const discardX = this.scale.width - 72;
+
+        this.deckPileBg = this.add.rectangle(deckX, pileY, pileW, pileH, 0xf2e8d8, 0.95).setStrokeStyle(2, 0x8b7254, 0.9);
+        this.deckPileText = this.add.text(deckX, pileY, "牌库\n0", {
             fontFamily: UI_FONT_FAMILY,
-            fontSize: "18px",
+            fontSize: "15px",
             color: "#3f2f20",
             align: "center",
         }).setOrigin(0.5);
 
-        this.discardPileBg = this.add.rectangle(this.scale.width - 70, 544, 86, 112, 0xe7ddcc, 0.9).setStrokeStyle(2, 0x8b7254, 0.9);
-        this.discardPileText = this.add.text(this.scale.width - 70, 544, "弃牌\n0", {
+        this.discardPileBg = this.add.rectangle(discardX, pileY, pileW, pileH, 0xe7ddcc, 0.95).setStrokeStyle(2, 0x8b7254, 0.9);
+        this.discardPileText = this.add.text(discardX, pileY, "弃牌\n0", {
             fontFamily: UI_FONT_FAMILY,
-            fontSize: "18px",
+            fontSize: "15px",
             color: "#3f2f20",
             align: "center",
         }).setOrigin(0.5);
@@ -577,7 +584,7 @@ export default class CultivationScene extends Phaser.Scene {
             for (let i = 0; i < drawn; i += 1) {
                 const view = this.handCardViews.find((x) => x.index === startIdx + i);
                 if (!view) continue;
-                view.container.setPosition(this.scale.width - 170, 544);
+                view.container.setPosition(this.deckPileBg?.x ?? 72, this.deckPileBg?.y ?? 548);
                 view.container.setScale(0.45);
                 view.container.setAlpha(0);
                 this.tweens.add({
