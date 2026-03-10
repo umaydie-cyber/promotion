@@ -46,6 +46,15 @@ type HandCardView = {
     container: Phaser.GameObjects.Container;
 };
 
+type UIButton = {
+    bg: Phaser.GameObjects.Rectangle;
+    text: Phaser.GameObjects.Text;
+    shadow: Phaser.GameObjects.Rectangle;
+    shine: Phaser.GameObjects.Rectangle;
+    onClick: () => void;
+    enabled: boolean;
+};
+
 const STARTER_CYCLE_DECK: CycleCard[] = [
     { id: "market", name: "坊市", count: 1, desc: "进入坊市" },
     { id: "travel", name: "游历山河", count: 1, desc: "触发游历事件（占位）" },
@@ -59,7 +68,7 @@ const CULTIVATION_CARD_DEFS: Record<CultivationCardId, CultivationCardDef> = {
         name: "引气入体",
         realm: "炼气",
         cost: { energy: 1, spirit: 1, aura: 3 },
-        desc: "消耗1精力、1神识、3灵气，生成5道韵。",
+        desc: "生成5道韵。",
         upgradedDesc: "升级：生成7道韵。",
         onPlay: (scene) => scene.gainDaoYun(5),
     },
@@ -68,7 +77,7 @@ const CULTIVATION_CARD_DEFS: Record<CultivationCardId, CultivationCardDef> = {
         name: "顿悟",
         realm: "炼气",
         cost: { energy: 2, spirit: 5 },
-        desc: "消耗2精力、5神识，生成8道韵。",
+        desc: "生成8道韵。",
         upgradedDesc: "升级：生成10道韵。",
         onPlay: (scene) => scene.gainDaoYun(8),
     },
@@ -77,7 +86,7 @@ const CULTIVATION_CARD_DEFS: Record<CultivationCardId, CultivationCardDef> = {
         name: "运气",
         realm: "炼气",
         cost: { energy: 1 },
-        desc: "消耗1精力，生成2点灵气。",
+        desc: "生成2点灵气。",
         upgradedDesc: "升级：生成3点灵气。",
         onPlay: (scene) => scene.gainAura(2),
     },
@@ -86,7 +95,7 @@ const CULTIVATION_CARD_DEFS: Record<CultivationCardId, CultivationCardDef> = {
         name: "凝神",
         realm: "炼气",
         cost: { energy: 1 },
-        desc: "消耗1精力，生成2点神识。",
+        desc: "生成2点神识。",
         upgradedDesc: "升级：生成3点神识。",
         onPlay: (scene) => scene.gainSpirit(2),
     },
@@ -95,7 +104,7 @@ const CULTIVATION_CARD_DEFS: Record<CultivationCardId, CultivationCardDef> = {
         name: "观想",
         realm: "炼气",
         cost: { energy: 1 },
-        desc: "消耗1精力，生成1点神识并抽1张牌。",
+        desc: "生成1点神识并抽1张牌。",
         upgradedDesc: "升级：生成2点神识并抽1张牌。",
         onPlay: (scene) => {
             scene.gainSpirit(1);
@@ -107,7 +116,7 @@ const CULTIVATION_CARD_DEFS: Record<CultivationCardId, CultivationCardDef> = {
         name: "小周天",
         realm: "炼气",
         cost: { energy: 1 },
-        desc: "置于任脉区。每回合首次获得灵气时，额外获得1灵气。",
+        desc: "置于任脉区，每回合首次获得灵气时额外+1灵气。",
         upgradedDesc: "升级：消耗改为0精力。",
         onPlay: (scene) => {
             scene.activateRenMai();
@@ -118,7 +127,7 @@ const CULTIVATION_CARD_DEFS: Record<CultivationCardId, CultivationCardDef> = {
         name: "灵台",
         realm: "炼气",
         cost: { energy: 1 },
-        desc: "置于督脉区。每回合开始时获得1神识。",
+        desc: "置于督脉区，每回合开始时获得1神识。",
         upgradedDesc: "升级：每回合开始获得2神识。",
         onPlay: (scene) => {
             scene.activateDuMai(1);
@@ -181,6 +190,8 @@ export default class CultivationScene extends Phaser.Scene {
     private meridianText?: Phaser.GameObjects.Text;
     private breakthroughBtn?: Phaser.GameObjects.Rectangle;
     private breakthroughText?: Phaser.GameObjects.Text;
+    private startCultivationBtn?: UIButton;
+    private endCycleBtn?: UIButton;
 
     constructor() {
         super({ key: "Cultivation" });
@@ -226,13 +237,14 @@ export default class CultivationScene extends Phaser.Scene {
         this.renderCycleCardsArea();
         this.renderCultivationArea();
 
-        this.makeButton(this.scale.width - 178, this.scale.height - 278, 140, 36, "开始修行", () => {
+        this.startCultivationBtn = this.makeButton(this.scale.width - 178, this.scale.height - 278, 140, 36, "开始修行", () => {
             this.startCultivation();
         });
 
-        this.makeButton(this.scale.width - 178, this.scale.height - 236, 140, 36, "结束周期", () => {
+        this.endCycleBtn = this.makeButton(this.scale.width - 178, this.scale.height - 236, 140, 36, "结束周期", () => {
             this.endCycleRound();
         });
+        this.setButtonVisible(this.endCycleBtn, false);
 
         this.add
             .text(this.scale.width - 18, 12, "⛶", { fontSize: "22px", color: "#3a2d21" })
@@ -367,6 +379,14 @@ export default class CultivationScene extends Phaser.Scene {
         this.updateMeridianText();
         this.updateRoundText();
         this.showStatus("修行开始：已抽5张修炼卡，进入第一轮出牌。", "#2f2419");
+        if (this.startCultivationBtn) {
+            this.setButtonVisible(this.startCultivationBtn, false);
+            this.setButtonEnabled(this.startCultivationBtn, false);
+        }
+        if (this.endCycleBtn) {
+            this.setButtonVisible(this.endCycleBtn, true);
+            this.setButtonEnabled(this.endCycleBtn, true);
+        }
     }
 
     private endCycleRound() {
@@ -395,6 +415,14 @@ export default class CultivationScene extends Phaser.Scene {
             this.updateCycleStageText();
             this.updateRoundText();
             this.showStatus("本周期修行结束，可重新点击开始修行进入下一周期。", "#4a3a2b");
+            if (this.startCultivationBtn) {
+                this.setButtonVisible(this.startCultivationBtn, true);
+                this.setButtonEnabled(this.startCultivationBtn, true);
+            }
+            if (this.endCycleBtn) {
+                this.setButtonEnabled(this.endCycleBtn, false);
+                this.setButtonVisible(this.endCycleBtn, false);
+            }
             return;
         }
 
@@ -561,15 +589,24 @@ export default class CultivationScene extends Phaser.Scene {
                 color: "#2e2419",
             }).setOrigin(0.5, 0);
 
-            const costText = this.add.text(x + 8, y + 34, this.formatCost(card), {
-                fontFamily: "serif",
-                fontSize: "13px",
-                color: "#5c4d3f",
-                wordWrap: { width: cardW - 16 },
-                lineSpacing: 2,
-            });
+            const energyBadge = this.add.rectangle(x + 20, y + 20, 24, 24, 0x2762c2, 0.95).setOrigin(0.5);
+            energyBadge.setStrokeStyle(1, 0xc2ddff, 0.95);
+            const energyCostText = this.add.text(energyBadge.x, energyBadge.y, `${card.cost.energy}`, {
+                fontFamily: "sans-serif",
+                fontSize: "14px",
+                color: "#ffffff",
+            }).setOrigin(0.5);
 
-            const descText = this.add.text(x + 8, y + 62, `${card.desc}\n${card.upgradedDesc}`, {
+            const spiritCost = card.cost.spirit ?? 0;
+            const spiritBadge = this.add.rectangle(x + cardW - 20, y + 20, 24, 24, spiritCost > 0 ? 0x7c3aed : 0x5f5f5f, 0.95).setOrigin(0.5);
+            spiritBadge.setStrokeStyle(1, 0xe3d7ff, 0.95);
+            const spiritCostText = this.add.text(spiritBadge.x, spiritBadge.y, `${spiritCost}`, {
+                fontFamily: "sans-serif",
+                fontSize: "13px",
+                color: "#ffffff",
+            }).setOrigin(0.5);
+
+            const descText = this.add.text(x + 8, y + 48, `${card.desc}\n${card.upgradedDesc}`, {
                 fontFamily: "serif",
                 fontSize: "12px",
                 color: "#4b3f31",
@@ -588,16 +625,9 @@ export default class CultivationScene extends Phaser.Scene {
                 this.playCultivationCard(card);
             });
 
-            container.add([bg, title, costText, descText, playTip]);
+            container.add([bg, title, energyBadge, energyCostText, spiritBadge, spiritCostText, descText, playTip]);
             this.handCardViews.push({ def: card, container });
         });
-    }
-
-    private formatCost(card: CultivationCardDef): string {
-        const chunks = [`精力${card.cost.energy}`];
-        if (card.cost.aura) chunks.push(`灵气${card.cost.aura}`);
-        if (card.cost.spirit) chunks.push(`神识${card.cost.spirit}`);
-        return `消耗：${chunks.join("，")}`;
     }
 
     private clearHandViews() {
@@ -755,7 +785,7 @@ export default class CultivationScene extends Phaser.Scene {
         this.cycleStageText?.setText(`周期：${this.cycleStageLabels[this.cycleStageIndex]}`);
     }
 
-    private makeButton(x: number, y: number, w: number, h: number, label: string, onClick: () => void) {
+    private makeButton(x: number, y: number, w: number, h: number, label: string, onClick: () => void): UIButton {
         const shadow = this.add
             .rectangle(x + 2, y + 3, w, h, 0x1f1811, 0.24)
             .setOrigin(0)
@@ -770,7 +800,7 @@ export default class CultivationScene extends Phaser.Scene {
             .on("pointerdown", () => {
                 btn.setY(y + 1.5);
                 shadow.setY(y + 2.5);
-                onClick();
+                if (button.enabled) onClick();
             })
             .on("pointerup", () => {
                 btn.setY(y);
@@ -797,6 +827,7 @@ export default class CultivationScene extends Phaser.Scene {
         const shineBaseY = y + 3;
 
         btn.on("pointerover", () => {
+            if (!button.enabled) return;
             btn.setFillStyle(0x5a4937, 0.98);
             this.tweens.add({
                 targets: [btn, btnText, shine],
@@ -827,6 +858,29 @@ export default class CultivationScene extends Phaser.Scene {
                 ease: "Sine.easeOut",
             });
         });
+
+        const button: UIButton = { bg: btn, text: btnText, shadow, shine, onClick, enabled: true };
+        return button;
+    }
+
+    private setButtonVisible(button: UIButton, visible: boolean) {
+        button.bg.setVisible(visible);
+        button.text.setVisible(visible);
+        button.shadow.setVisible(visible);
+        button.shine.setVisible(visible);
+    }
+
+    private setButtonEnabled(button: UIButton, enabled: boolean) {
+        button.enabled = enabled;
+        if (enabled) {
+            button.bg.setFillStyle(0x4b3d2f, 0.94);
+            button.bg.setInteractive({ useHandCursor: true });
+            button.text.setColor("#f6ecdc");
+            return;
+        }
+        button.bg.disableInteractive();
+        button.bg.setFillStyle(0x7a7a7a, 0.95);
+        button.text.setColor("#dedede");
     }
 
     private showToast(msg: string, duration = 1500) {
