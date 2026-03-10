@@ -239,6 +239,7 @@ export default class CultivationScene extends Phaser.Scene {
     private meridianText?: Phaser.GameObjects.Text;
     private breakthroughBtn?: Phaser.GameObjects.Rectangle;
     private breakthroughText?: Phaser.GameObjects.Text;
+    private startCultivationBtn?: UIButton;
     private endCycleBtn?: UIButton;
     private cycleDeckObjects: Phaser.GameObjects.GameObject[] = [];
     private cycleSlotObjects: Phaser.GameObjects.GameObject[] = [];
@@ -281,13 +282,17 @@ export default class CultivationScene extends Phaser.Scene {
         this.renderCycleCardsArea();
         this.renderCultivationArea();
 
+        this.startCultivationBtn = this.makeButton(this.scale.width - 332, this.scale.height - 278, 140, 36, "开始修行", () => {
+            this.startCultivation();
+        });
+        this.setButtonVisible(this.startCultivationBtn, true);
+        this.setButtonEnabled(this.startCultivationBtn, false);
+
         this.endCycleBtn = this.makeButton(this.scale.width - 176, this.scale.height - 278, 140, 36, "结束回合", () => {
             this.endCycleRound();
         });
-        this.setButtonVisible(this.endCycleBtn, true);
-        this.setButtonEnabled(this.endCycleBtn, true);
-
-        this.startCultivation();
+        this.setButtonVisible(this.endCycleBtn, false);
+        this.setButtonEnabled(this.endCycleBtn, false);
 
         this.add
             .text(this.scale.width - 18, 12, "⛶", { fontSize: "22px", color: "#3a2d21" })
@@ -369,7 +374,7 @@ export default class CultivationScene extends Phaser.Scene {
             color: "#3d3125",
         });
 
-        this.cultivationStatusText = this.add.text(48, 334, "已自动开始修行：先洗牌并抽5张，当前可直接进入出牌阶段。", {
+        this.cultivationStatusText = this.add.text(48, 334, "请先拖拽周期卡定义4个阶段，再点击【开始修行】进入洗牌、抽牌与打牌阶段。", {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "14px",
             color: "#4a3a2b",
@@ -459,7 +464,11 @@ export default class CultivationScene extends Phaser.Scene {
             return;
         }
 
-        this.ensureCycleSlotsReady();
+        if (!this.allCycleSlotsFilled()) {
+            this.showToast("请先拖拽周期卡，完整定义4个阶段后再开始修行。", 1600);
+            this.showStatus("尚未开始修行：请先拖拽周期卡定义4个阶段。", "#6b2d1a");
+            return;
+        }
 
         this.cultivationStarted = true;
         this.roundIndex = 0;
@@ -475,15 +484,9 @@ export default class CultivationScene extends Phaser.Scene {
         this.cultivationDeckTotal = this.cultivationDeck.length;
         this.cycleDeckObjects.forEach((obj) => {
             obj.setVisible(false);
-            if ("disableInteractive" in obj) {
-                (obj as Phaser.GameObjects.GameObject & { disableInteractive: () => void }).disableInteractive();
-            }
         });
         this.cycleSlotObjects.forEach((obj) => {
             obj.setVisible(false);
-            if ("disableInteractive" in obj) {
-                (obj as Phaser.GameObjects.GameObject & { disableInteractive: () => void }).disableInteractive();
-            }
         });
         this.cultivationDiscard = [];
         this.handCards = [];
@@ -498,30 +501,17 @@ export default class CultivationScene extends Phaser.Scene {
         this.updateMeridianText();
         this.updateRoundText();
         this.showStatus("修行开始：已抽5张修炼卡，进入第一轮出牌。", "#2f2419");
+        if (this.startCultivationBtn) {
+            this.setButtonEnabled(this.startCultivationBtn, false);
+        }
         if (this.endCycleBtn) {
             this.setButtonVisible(this.endCycleBtn, true);
             this.setButtonEnabled(this.endCycleBtn, true);
         }
     }
 
-    private ensureCycleSlotsReady() {
-        if (this.cycleSlots.every((slot) => slot.card)) return;
-
-        const expandedDeck: CycleCard[] = STARTER_CYCLE_DECK.flatMap((card) =>
-            Array.from({ length: card.count }, () => ({ ...card, count: 1 })),
-        );
-        const fallbackQueue = Phaser.Utils.Array.Shuffle([...expandedDeck]);
-
-        this.cycleSlots.forEach((slot, idx) => {
-            if (slot.card) return;
-            const fallback = fallbackQueue.shift();
-            if (!fallback) return;
-            slot.card = fallback;
-            slot.label.setText(`第${idx + 1}轮\n${fallback.name}`);
-            slot.bg.setFillStyle(0xe8dcc9, 0.95);
-        });
-
-        this.showToast("已自动补全周期轮次，立即开始发牌。", 1600);
+    private allCycleSlotsFilled() {
+        return this.cycleSlots.length === 4 && this.cycleSlots.every((slot) => slot.card);
     }
 
     private endCycleRound() {
@@ -550,8 +540,16 @@ export default class CultivationScene extends Phaser.Scene {
             });
             this.updateCycleStageText();
             this.updateRoundText();
-            this.showStatus("本周期修行结束，已重新洗牌并进入下一周期。", "#4a3a2b");
-            this.startCultivation();
+            this.cycleDeckObjects.forEach((obj) => obj.setVisible(true));
+            this.cycleSlotObjects.forEach((obj) => obj.setVisible(true));
+            if (this.startCultivationBtn) {
+                this.setButtonEnabled(this.startCultivationBtn, this.allCycleSlotsFilled());
+            }
+            if (this.endCycleBtn) {
+                this.setButtonVisible(this.endCycleBtn, false);
+                this.setButtonEnabled(this.endCycleBtn, false);
+            }
+            this.showStatus("本周期修行结束：请确认4个阶段后，点击【开始修行】进入下一周期。", "#4a3a2b");
             return;
         }
 
@@ -1205,13 +1203,23 @@ export default class CultivationScene extends Phaser.Scene {
                     deleteText.destroy();
                     slot.deleteBtn = undefined;
                     slot.deleteText = undefined;
+                    if (this.startCultivationBtn) {
+                        this.setButtonEnabled(this.startCultivationBtn, this.allCycleSlotsFilled() && !this.cultivationStarted);
+                    }
                 });
 
                 slot.deleteBtn = deleteBtn;
                 slot.deleteText = deleteText;
                 this.cycleSlotObjects.push(deleteBtn, deleteText);
+                if (this.startCultivationBtn) {
+                    this.setButtonEnabled(this.startCultivationBtn, this.allCycleSlotsFilled() && !this.cultivationStarted);
+                }
             },
         );
+
+        if (this.startCultivationBtn) {
+            this.setButtonEnabled(this.startCultivationBtn, this.allCycleSlotsFilled() && !this.cultivationStarted);
+        }
     }
 
     private updateCycleStageText() {
