@@ -829,34 +829,13 @@ export default class CultivationScene extends Phaser.Scene {
         btn.on("pointerover", () => {
             if (!button.enabled) return;
             btn.setFillStyle(0x5a4937, 0.98);
-            this.tweens.add({
-                targets: [btn, btnText, shine],
-                y: "-=${1}",
-                duration: 120,
-                ease: "Sine.easeOut",
-            });
         });
 
         btn.on("pointerout", () => {
             btn.setFillStyle(0x4b3d2f, 0.94);
-            this.tweens.add({
-                targets: btn,
-                y: btnBaseY,
-                duration: 140,
-                ease: "Sine.easeOut",
-            });
-            this.tweens.add({
-                targets: btnText,
-                y: textBaseY,
-                duration: 140,
-                ease: "Sine.easeOut",
-            });
-            this.tweens.add({
-                targets: shine,
-                y: shineBaseY,
-                duration: 140,
-                ease: "Sine.easeOut",
-            });
+            btn.setY(btnBaseY);
+            btnText.setY(textBaseY);
+            shine.setY(shineBaseY);
         });
 
         const button: UIButton = { bg: btn, text: btnText, shadow, shine, onClick, enabled: true };
