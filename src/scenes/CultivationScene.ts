@@ -42,8 +42,12 @@ type CultivationCardDef = {
 type ResourceType = "aura" | "spirit";
 
 type HandCardView = {
+    index: number;
     def: CultivationCardDef;
     container: Phaser.GameObjects.Container;
+    bg: Phaser.GameObjects.Rectangle;
+    baseX: number;
+    baseY: number;
 };
 
 type RealmTier = "炼气" | "筑基" | "金丹" | "元婴" | "化神";
@@ -213,6 +217,12 @@ export default class CultivationScene extends Phaser.Scene {
     private cultivationDiscard: CultivationCardDef[] = [];
     private handCards: CultivationCardDef[] = [];
     private handCardViews: HandCardView[] = [];
+    private selectedCardIndex: number | null = null;
+    private draggingCard = false;
+    private isPlayingCard = false;
+    private discardPileBg?: Phaser.GameObjects.Rectangle;
+    private discardPileText?: Phaser.GameObjects.Text;
+    private deckPileText?: Phaser.GameObjects.Text;
 
     private cultivationStarted = false;
     private renMaiActive = false;
@@ -379,6 +389,37 @@ export default class CultivationScene extends Phaser.Scene {
             fontSize: "22px",
             color: "#3a2d21",
         }).setOrigin(0.5);
+
+        this.add.line(0, 0, 120, 440, this.scale.width - 120, 440, 0x8d7356, 0.5).setLineWidth(2, 2);
+        this.add.text(this.scale.width / 2, 444, "将卡牌拖到上方后再次点击即可打出", {
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "14px",
+            color: "#6b5a45",
+        }).setOrigin(0.5, 0);
+
+        this.add.rectangle(this.scale.width - 170, 544, 86, 112, 0xf2e8d8, 0.9).setStrokeStyle(2, 0x8b7254, 0.9);
+        this.deckPileText = this.add.text(this.scale.width - 170, 544, "牌库\n0", {
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "18px",
+            color: "#3f2f20",
+            align: "center",
+        }).setOrigin(0.5);
+
+        this.discardPileBg = this.add.rectangle(this.scale.width - 70, 544, 86, 112, 0xe7ddcc, 0.9).setStrokeStyle(2, 0x8b7254, 0.9);
+        this.discardPileText = this.add.text(this.scale.width - 70, 544, "弃牌\n0", {
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "18px",
+            color: "#3f2f20",
+            align: "center",
+        }).setOrigin(0.5);
+
+        this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
+            if (!this.draggingCard || this.selectedCardIndex === null) return;
+            const view = this.handCardViews.find((x) => x.index === this.selectedCardIndex);
+            if (!view) return;
+            view.container.x = pointer.worldX - view.container.width / 2;
+            view.container.y = pointer.worldY - view.container.height / 2;
+        });
     }
 
     private startCultivation() {
@@ -412,6 +453,9 @@ export default class CultivationScene extends Phaser.Scene {
         });
         this.cultivationDiscard = [];
         this.handCards = [];
+        this.selectedCardIndex = null;
+        this.draggingCard = false;
+        this.isPlayingCard = false;
         this.clearHandViews();
         this.drawCultivationCards(5);
         this.updateResourceText();
@@ -512,6 +556,8 @@ export default class CultivationScene extends Phaser.Scene {
     }
 
     public drawCultivationCards(count: number) {
+        const startIdx = this.handCards.length;
+        let drawn = 0;
         for (let i = 0; i < count; i += 1) {
             if (this.cultivationDeck.length === 0) {
                 if (this.cultivationDiscard.length === 0) break;
@@ -519,9 +565,33 @@ export default class CultivationScene extends Phaser.Scene {
                 this.cultivationDiscard = [];
             }
             const card = this.cultivationDeck.shift();
-            if (card) this.handCards.push(card);
+            if (card) {
+                this.handCards.push(card);
+                drawn += 1;
+            }
         }
         this.renderHandCards();
+        this.updatePileText();
+
+        if (drawn > 0) {
+            for (let i = 0; i < drawn; i += 1) {
+                const view = this.handCardViews.find((x) => x.index === startIdx + i);
+                if (!view) continue;
+                view.container.setPosition(this.scale.width - 170, 544);
+                view.container.setScale(0.45);
+                view.container.setAlpha(0);
+                this.tweens.add({
+                    targets: view.container,
+                    x: view.baseX,
+                    y: view.baseY,
+                    scale: 1,
+                    alpha: 1,
+                    duration: 320,
+                    ease: "Back.Out",
+                    delay: i * 60,
+                });
+            }
+        }
     }
 
     public activateRenMai() {
@@ -552,15 +622,74 @@ export default class CultivationScene extends Phaser.Scene {
         this.spirit -= spiritCost;
 
         card.onPlay(this);
-
-        const idx = this.handCards.indexOf(card);
-        if (idx >= 0) {
-            this.handCards.splice(idx, 1);
-        }
         this.cultivationDiscard.push(card);
-        this.renderHandCards();
+        this.updatePileText();
         this.updateResourceText();
         this.showStatus(`已打出【${card.name}】。`, "#2f2419");
+    }
+
+    private tryPlaySelectedCard() {
+        if (this.selectedCardIndex === null || this.isPlayingCard) return;
+        const idx = this.selectedCardIndex;
+        const card = this.handCards[idx];
+        const view = this.handCardViews.find((x) => x.index === idx);
+        if (!card || !view) return;
+
+        if (view.container.y > 440) {
+            this.showToast("卡牌未拖到出牌区，已回到手牌。", 1000);
+            this.releaseSelectedCard(true);
+            return;
+        }
+
+        const auraCost = card.cost.aura ?? 0;
+        const spiritCost = card.cost.spirit ?? 0;
+        if (this.energy < card.cost.energy || this.aura < auraCost || this.spirit < spiritCost) {
+            this.showToast("资源不足，无法打出该卡。", 1200);
+            this.releaseSelectedCard(true);
+            return;
+        }
+
+        this.isPlayingCard = true;
+        this.draggingCard = false;
+        this.tweens.add({
+            targets: view.container,
+            x: this.discardPileBg?.x ?? this.scale.width - 70,
+            y: this.discardPileBg?.y ?? 544,
+            scale: 0.25,
+            angle: 18,
+            alpha: 0.4,
+            duration: 260,
+            ease: "Cubic.In",
+            onComplete: () => {
+                this.handCards.splice(idx, 1);
+                this.playCultivationCard(card);
+                this.selectedCardIndex = null;
+                this.isPlayingCard = false;
+                this.renderHandCards();
+            },
+        });
+    }
+
+    private releaseSelectedCard(withTween = false) {
+        if (this.selectedCardIndex === null) return;
+        const view = this.handCardViews.find((x) => x.index === this.selectedCardIndex);
+        if (!view) return;
+        this.draggingCard = false;
+        if (withTween) {
+            this.tweens.add({
+                targets: view.container,
+                x: view.baseX,
+                y: view.baseY,
+                scale: 1,
+                duration: 140,
+                ease: "Quad.Out",
+            });
+        } else {
+            view.container.setPosition(view.baseX, view.baseY);
+            view.container.setScale(1);
+        }
+        view.container.setDepth(10 + view.index);
+        this.selectedCardIndex = null;
     }
 
     private updateResourceText() {
@@ -723,7 +852,23 @@ export default class CultivationScene extends Phaser.Scene {
             const bg = this.add.rectangle(x, y, cardW, cardH, 0xffffff, 0.001).setOrigin(0);
 
             bg.setInteractive({ useHandCursor: true }).on("pointerdown", () => {
-                this.playCultivationCard(card);
+                if (this.isPlayingCard) return;
+                if (this.selectedCardIndex === idx) {
+                    this.tryPlaySelectedCard();
+                    return;
+                }
+
+                this.releaseSelectedCard();
+                this.selectedCardIndex = idx;
+                this.draggingCard = true;
+                container.setDepth(5000);
+                this.tweens.add({
+                    targets: container,
+                    y: y - cardH * 0.14,
+                    scale: 1.07,
+                    duration: 120,
+                    ease: "Quad.Out",
+                });
             });
 
             container.add([
@@ -743,8 +888,10 @@ export default class CultivationScene extends Phaser.Scene {
                 descText,
                 bg,
             ]);
-            this.handCardViews.push({ def: card, container });
+            this.handCardViews.push({ index: idx, def: card, container, bg, baseX: x, baseY: y });
         });
+
+        this.updatePileText();
     }
 
     private getHandLayout(cardCount: number): HandLayout {
@@ -772,6 +919,13 @@ export default class CultivationScene extends Phaser.Scene {
     private clearHandViews() {
         this.handCardViews.forEach((v) => v.container.destroy(true));
         this.handCardViews = [];
+        this.selectedCardIndex = null;
+        this.draggingCard = false;
+    }
+
+    private updatePileText() {
+        this.deckPileText?.setText(`牌库\n${this.cultivationDeck.length}`);
+        this.discardPileText?.setText(`弃牌\n${this.cultivationDiscard.length}`);
     }
 
     private renderCycleCardsArea() {
