@@ -623,85 +623,100 @@ export default class CultivationScene extends Phaser.Scene {
 
             const cardShell = this.add.graphics();
             cardShell.fillStyle(0x2a221a, 0.82);
-            const shellRadius = Math.max(10, Math.floor(cardW * 0.11));
-            const cardRadius = Math.max(8, Math.floor(cardW * 0.085));
-            cardShell.fillRoundedRect(x - 4, y - 4, cardW + 8, cardH + 8, shellRadius);
+            const shellInset = Math.max(2, Math.floor(cardW * 0.03));
+            const shellRadius = Math.max(8, Math.floor(cardW * 0.11));
+            const cardRadius = Math.max(6, Math.floor(cardW * 0.085));
+            cardShell.fillRoundedRect(x - shellInset, y - shellInset, cardW + shellInset * 2, cardH + shellInset * 2, shellRadius);
             cardShell.fillStyle(0xf3ebdc, 1);
             cardShell.fillRoundedRect(x, y, cardW, cardH, cardRadius);
-            cardShell.lineStyle(4, 0x7f6f58, 0.95);
+            cardShell.lineStyle(Math.max(2, Math.floor(cardW * 0.024)), 0x7f6f58, 0.95);
             cardShell.strokeRoundedRect(x, y, cardW, cardH, cardRadius);
 
             const marble = this.add.graphics();
-            marble.lineStyle(1.2, 0xe6dbc7, 0.9);
-            for (let i = 0; i < 9; i++) {
-                const offset = 12 + i * 18;
-                marble.beginPath();
-                marble.moveTo(x + 6, y + offset);
-                marble.quadraticCurveTo(x + cardW * 0.45, y + offset - 8, x + cardW - 8, y + offset + 4);
-                marble.strokePath();
+            marble.lineStyle(Math.max(0.8, cardW * 0.008), 0xe6dbc7, 0.9);
+            const veinCount = Math.max(4, Math.floor(cardH / 24));
+            const veinTop = y + cardH * 0.08;
+            const veinBottom = y + cardH * 0.9;
+            for (let i = 0; i < veinCount; i++) {
+                const offset = veinTop + ((veinBottom - veinTop) / Math.max(1, veinCount - 1)) * i;
+                marble.lineBetween(x + cardW * 0.06, offset, x + cardW * 0.93, offset + cardH * 0.02);
             }
 
             const frame = this.add.graphics();
+            const frameX = x + cardW * 0.08;
+            const frameY = y + cardH * 0.15;
+            const frameW = cardW * 0.84;
+            const frameH = cardH * 0.38;
             frame.fillStyle(0xdbc9ad, 0.95);
-            frame.fillRoundedRect(x + 10, y + 34, cardW - 20, cardH * 0.38, 10);
-            frame.lineStyle(2, 0x8d7356, 0.95);
-            frame.strokeRoundedRect(x + 10, y + 34, cardW - 20, cardH * 0.38, 10);
+            frame.fillRoundedRect(frameX, frameY, frameW, frameH, Math.max(6, cardW * 0.05));
+            frame.lineStyle(Math.max(1, cardW * 0.015), 0x8d7356, 0.95);
+            frame.strokeRoundedRect(frameX, frameY, frameW, frameH, Math.max(6, cardW * 0.05));
 
             const artBg = this.add.graphics();
+            const artX = x + cardW * 0.12;
+            const artY = y + cardH * 0.18;
+            const artW = cardW * 0.76;
+            const artH = cardH * 0.31;
             artBg.fillGradientStyle(artStyle.colorA, artStyle.colorA, artStyle.colorB, artStyle.colorB, 1);
-            artBg.fillRoundedRect(x + 16, y + 40, cardW - 32, cardH * 0.31, 8);
+            artBg.fillRoundedRect(artX, artY, artW, artH, Math.max(6, cardW * 0.045));
 
-            const artName = this.add.text(x + cardW / 2, y + 56, card.name, {
+            const artName = this.add.text(x + cardW / 2, y + cardH * 0.23, card.name, {
                 fontFamily: UI_FONT_FAMILY,
-                fontSize: `${Math.max(14, Math.floor(cardW * 0.11))}px`,
+                fontSize: `${Math.max(10, Math.floor(cardW * 0.11))}px`,
                 color: "#2e2419",
             }).setOrigin(0.5, 0);
 
-            const artIcon = this.add.text(x + cardW / 2, y + 86, artStyle.icon, {
+            const artIcon = this.add.text(x + cardW / 2, y + cardH * 0.39, artStyle.icon, {
                 fontFamily: UI_FONT_FAMILY,
-                fontSize: `${Math.max(20, Math.floor(cardW * 0.18))}px`,
+                fontSize: `${Math.max(14, Math.floor(cardW * 0.18))}px`,
                 color: "#fff8eb",
             }).setOrigin(0.5);
 
-            const energyBadge = this.add.circle(x + 20, y + 20, 16, 0x2c74d1, 1);
-            energyBadge.setStrokeStyle(3, 0xd8ebff, 1);
+            const badgeRadius = Math.max(8, Math.floor(cardW * 0.12));
+            const energyBadge = this.add.circle(x + cardW * 0.16, y + cardH * 0.11, badgeRadius, 0x2c74d1, 1);
+            energyBadge.setStrokeStyle(Math.max(1.5, cardW * 0.018), 0xd8ebff, 1);
             const energyCostText = this.add.text(energyBadge.x, energyBadge.y, `${card.cost.energy}`, {
                 fontFamily: UI_FONT_FAMILY,
-                fontSize: `${Math.max(14, Math.floor(cardW * 0.1))}px`,
+                fontSize: `${Math.max(10, Math.floor(cardW * 0.1))}px`,
                 color: "#ffffff",
                 fontStyle: "bold",
             }).setOrigin(0.5);
 
-            const spiritBadge = this.add.circle(x + cardW - 20, y + 20, 16, spiritCost > 0 ? 0x9454e6 : 0x69737f, 1);
-            spiritBadge.setStrokeStyle(3, spiritCost > 0 ? 0xe7d5ff : 0xc4ccd8, 1);
+            const spiritBadge = this.add.circle(x + cardW * 0.84, y + cardH * 0.11, badgeRadius, spiritCost > 0 ? 0x9454e6 : 0x69737f, 1);
+            spiritBadge.setStrokeStyle(Math.max(1.5, cardW * 0.018), spiritCost > 0 ? 0xe7d5ff : 0xc4ccd8, 1);
             const spiritCostText = this.add.text(spiritBadge.x, spiritBadge.y, `${spiritCost}`, {
                 fontFamily: UI_FONT_FAMILY,
-                fontSize: `${Math.max(14, Math.floor(cardW * 0.1))}px`,
+                fontSize: `${Math.max(10, Math.floor(cardW * 0.1))}px`,
                 color: "#ffffff",
                 fontStyle: "bold",
             }).setOrigin(0.5);
 
-            const realmEllipse = this.add.ellipse(x + cardW / 2, y + 130, 76, 24, realmBadge.fill, 1);
-            realmEllipse.setStrokeStyle(2, realmBadge.stroke, 1);
-            const realmText = this.add.text(x + cardW / 2, y + 130, card.realm, {
+            const realmY = y + cardH * 0.58;
+            const realmEllipse = this.add.ellipse(x + cardW / 2, realmY, Math.max(42, cardW * 0.64), Math.max(16, cardH * 0.1), realmBadge.fill, 1);
+            realmEllipse.setStrokeStyle(Math.max(1, cardW * 0.012), realmBadge.stroke, 1);
+            const realmText = this.add.text(x + cardW / 2, realmY, card.realm, {
                 fontFamily: UI_FONT_FAMILY,
-                fontSize: `${Math.max(12, Math.floor(cardW * 0.085))}px`,
+                fontSize: `${Math.max(8, Math.floor(cardW * 0.085))}px`,
                 color: realmBadge.text,
                 fontStyle: "bold",
             }).setOrigin(0.5);
 
             const descPanel = this.add.graphics();
+            const descX = x + cardW * 0.1;
+            const descY = y + cardH * 0.66;
+            const descW = cardW * 0.8;
+            const descH = Math.max(24, cardH * 0.3);
             descPanel.fillStyle(0xe8dcc7, 0.96);
-            descPanel.fillRoundedRect(x + 12, y + 144, cardW - 24, cardH - 156, 8);
-            descPanel.lineStyle(1.5, 0xa48a68, 0.95);
-            descPanel.strokeRoundedRect(x + 12, y + 144, cardW - 24, cardH - 156, 8);
+            descPanel.fillRoundedRect(descX, descY, descW, descH, Math.max(5, cardW * 0.04));
+            descPanel.lineStyle(Math.max(1, cardW * 0.01), 0xa48a68, 0.95);
+            descPanel.strokeRoundedRect(descX, descY, descW, descH, Math.max(5, cardW * 0.04));
 
-            const descText = this.add.text(x + 20, y + 152, `${card.desc}\n${card.upgradedDesc}`, {
+            const descText = this.add.text(descX + cardW * 0.05, descY + cardH * 0.03, `${card.desc}\n${card.upgradedDesc}`, {
                 fontFamily: UI_FONT_FAMILY,
-                fontSize: `${Math.max(10, Math.floor(cardW * 0.072))}px`,
+                fontSize: `${Math.max(8, Math.floor(cardW * 0.07))}px`,
                 color: "#4b3f31",
-                wordWrap: { width: cardW - 40 },
-                lineSpacing: 2,
+                wordWrap: { width: descW - cardW * 0.1 },
+                lineSpacing: 1,
                 maxLines: 5,
             });
 
@@ -735,7 +750,7 @@ export default class CultivationScene extends Phaser.Scene {
     private getHandLayout(cardCount: number): HandLayout {
         const safeWidth = this.scale.width - 48;
         const maxCardW = 168;
-        const minCardW = 112;
+        const minCardW = 64;
         const gapRatio = 0.1;
 
         let cardW = maxCardW;
@@ -745,7 +760,7 @@ export default class CultivationScene extends Phaser.Scene {
         if (totalW > safeWidth) {
             const raw = safeWidth / (cardCount + (cardCount - 1) * gapRatio);
             cardW = Phaser.Math.Clamp(Math.floor(raw), minCardW, maxCardW);
-            gap = Math.max(8, Math.round(cardW * gapRatio));
+            gap = Math.max(4, Math.round(cardW * gapRatio));
             totalW = cardCount * cardW + (cardCount - 1) * gap;
         }
 
