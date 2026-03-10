@@ -906,9 +906,9 @@ export default class CultivationScene extends Phaser.Scene {
             const bg = this.add.rectangle(x, y, cardW, cardH, 0xffffff, 0.001).setOrigin(0);
 
             if (!costCheck.canAfford) {
-                cardShell.setFillStyle(0xe9dfcf, 0.88);
-                frame.setStrokeStyle(Math.max(2, cardW * 0.02), 0xb95b50, 0.95);
-                container.setAlpha(0.85);
+                cardShell.setAlpha(0.82);
+                frame.setAlpha(0.76);
+                container.setAlpha(0.78);
             }
 
             bg.setInteractive({ draggable: true, useHandCursor: true });
