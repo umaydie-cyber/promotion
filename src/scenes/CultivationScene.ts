@@ -69,6 +69,11 @@ type HandLayout = {
     y: number;
 };
 
+type CostCheck = {
+    canAfford: boolean;
+    missing: string[];
+};
+
 const STARTER_CYCLE_DECK: CycleCard[] = [
     { id: "market", name: "坊市", count: 1, desc: "进入坊市" },
     { id: "travel", name: "游历山河", count: 1, desc: "触发游历事件（占位）" },
@@ -225,6 +230,7 @@ export default class CultivationScene extends Phaser.Scene {
     private discardPileBg?: Phaser.GameObjects.Rectangle;
     private discardPileText?: Phaser.GameObjects.Text;
     private deckPileText?: Phaser.GameObjects.Text;
+    private resourceWarningText?: Phaser.GameObjects.Text;
 
     private cultivationStarted = false;
     private renMaiActive = false;
@@ -424,6 +430,14 @@ export default class CultivationScene extends Phaser.Scene {
             align: "center",
         }).setOrigin(0.5);
         this.discardPileText.setDepth(201);
+
+        this.resourceWarningText = this.add.text(this.scale.width / 2, 414, "", {
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "15px",
+            color: "#ffe3e0",
+            backgroundColor: "#7e2922",
+            padding: { x: 10, y: 4 },
+        }).setOrigin(0.5).setDepth(210).setAlpha(0);
 
         this.setPileVisibility(false);
 
@@ -647,25 +661,34 @@ export default class CultivationScene extends Phaser.Scene {
     private playCultivationCard(card: CultivationCardDef) {
         if (!this.cultivationStarted) {
             this.showToast("尚未开始修行。", 1200);
-            return;
+            return false;
+        }
+
+        const check = this.getCostCheck(card);
+        if (!check.canAfford) {
+            this.showResourceLackFeedback(card, undefined, check.missing);
+            return false;
         }
 
         const auraCost = card.cost.aura ?? 0;
         const spiritCost = card.cost.spirit ?? 0;
-        if (this.energy < card.cost.energy || this.aura < auraCost || this.spirit < spiritCost) {
-            this.showToast("资源不足，无法打出该卡。", 1200);
-            return;
-        }
-
         this.energy -= card.cost.energy;
         this.aura -= auraCost;
         this.spirit -= spiritCost;
 
-        card.onPlay(this);
         this.cultivationDiscard.push(card);
         this.updatePileText();
         this.updateResourceText();
+
+        const handBeforeOnPlay = this.handCards.length;
+        card.onPlay(this);
+        const didDrawCard = this.handCards.length > handBeforeOnPlay;
+        if (!didDrawCard) {
+            this.renderHandCards();
+        }
+
         this.showStatus(`已打出【${card.name}】。`, "#2f2419");
+        return true;
     }
 
     private tryPlaySelectedCard() {
@@ -681,10 +704,9 @@ export default class CultivationScene extends Phaser.Scene {
             return;
         }
 
-        const auraCost = card.cost.aura ?? 0;
-        const spiritCost = card.cost.spirit ?? 0;
-        if (this.energy < card.cost.energy || this.aura < auraCost || this.spirit < spiritCost) {
-            this.showToast("资源不足，无法打出该卡。", 1200);
+        const check = this.getCostCheck(card);
+        if (!check.canAfford) {
+            this.showResourceLackFeedback(card, view, check.missing);
             this.releaseSelectedCard(true);
             return;
         }
@@ -705,7 +727,6 @@ export default class CultivationScene extends Phaser.Scene {
                 this.playCultivationCard(card);
                 this.selectedCardIndex = null;
                 this.isPlayingCard = false;
-                this.renderHandCards();
             },
         });
     }
@@ -789,6 +810,7 @@ export default class CultivationScene extends Phaser.Scene {
             const realmBadge = REALM_BADGE_STYLE[realmTier] ?? REALM_BADGE_STYLE.炼气;
             const artStyle = CULTIVATION_ART_STYLE[card.id];
             const spiritCost = card.cost.spirit ?? 0;
+            const costCheck = this.getCostCheck(card);
 
             const cardShell = this.add.graphics();
             cardShell.fillStyle(0x2a221a, 0.82);
@@ -891,6 +913,12 @@ export default class CultivationScene extends Phaser.Scene {
 
             const bg = this.add.rectangle(x, y, cardW, cardH, 0xffffff, 0.001).setOrigin(0);
 
+            if (!costCheck.canAfford) {
+                cardShell.setFillStyle(0xe9dfcf, 0.88);
+                frame.setStrokeStyle(Math.max(2, cardW * 0.02), 0xb95b50, 0.95);
+                container.setAlpha(0.85);
+            }
+
             bg.setInteractive({ draggable: true, useHandCursor: true });
             bg.on("dragstart", () => {
                 if (this.isPlayingCard) return;
@@ -960,7 +988,9 @@ export default class CultivationScene extends Phaser.Scene {
     }
 
     private getHandLayout(cardCount: number): HandLayout {
-        const safeWidth = this.scale.width - 48;
+        const handSafeLeft = 130;
+        const handSafeRight = this.scale.width - 130;
+        const safeWidth = handSafeRight - handSafeLeft;
         const maxCardW = 168;
         const minCardW = 64;
         const gapRatio = 0.1;
@@ -977,8 +1007,49 @@ export default class CultivationScene extends Phaser.Scene {
         }
 
         const cardH = Math.round(cardW * 1.36);
-        const startX = (this.scale.width - totalW) / 2;
+        const centeredStartX = (this.scale.width - totalW) / 2;
+        const startX = Phaser.Math.Clamp(centeredStartX, handSafeLeft, handSafeRight - totalW);
         return { cardW, cardH, gap, startX, y: 500 };
+    }
+
+    private getCostCheck(card: CultivationCardDef): CostCheck {
+        const missing: string[] = [];
+        const auraCost = card.cost.aura ?? 0;
+        const spiritCost = card.cost.spirit ?? 0;
+        if (this.energy < card.cost.energy) missing.push(`精力${card.cost.energy}`);
+        if (this.aura < auraCost) missing.push(`灵气${auraCost}`);
+        if (this.spirit < spiritCost) missing.push(`神识${spiritCost}`);
+        return { canAfford: missing.length === 0, missing };
+    }
+
+    private showResourceLackFeedback(card: CultivationCardDef, view?: HandCardView, missing?: string[]) {
+        const missings = missing ?? this.getCostCheck(card).missing;
+        const missText = missings.length > 0 ? `缺少：${missings.join("、")}` : "资源不足";
+        this.showToast(`资源不足，无法打出【${card.name}】（${missText}）`, 1400);
+
+        if (this.resourceWarningText) {
+            this.resourceWarningText.setText(`资源不足：${missText}`);
+            this.resourceWarningText.setAlpha(1);
+            this.resourceWarningText.setScale(1);
+            this.tweens.killTweensOf(this.resourceWarningText);
+            this.tweens.add({ targets: this.resourceWarningText, scale: 1.04, duration: 120, yoyo: true, repeat: 1 });
+            this.time.delayedCall(900, () => {
+                this.tweens.add({ targets: this.resourceWarningText, alpha: 0, duration: 220 });
+            });
+        }
+
+        if (view) {
+            this.tweens.add({
+                targets: view.container,
+                x: view.baseX - 8,
+                duration: 36,
+                yoyo: true,
+                repeat: 3,
+                onComplete: () => {
+                    view.container.x = view.baseX;
+                },
+            });
+        }
     }
 
     private clearHandViews() {
