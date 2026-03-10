@@ -231,12 +231,6 @@ export default class CultivationScene extends Phaser.Scene {
             this.showToast(`战斗卡组：${battleDeck}`);
         });
 
-        this.add.text(this.scale.width / 2, this.scale.height - 292, "周期卡牌（先拖拽填充周期，再每轮触发）", {
-            fontFamily: UI_FONT_FAMILY,
-            fontSize: "24px",
-            color: "#3a2d21",
-        }).setOrigin(0.5);
-
         this.renderCycleCardsArea();
         this.renderCultivationArea();
 
@@ -277,7 +271,7 @@ export default class CultivationScene extends Phaser.Scene {
     }
 
     private renderCharacterPanel() {
-        const panel = this.add.rectangle(30, 88, 430, 340, 0xf7f0e5, 0.92).setOrigin(0);
+        const panel = this.add.rectangle(30, 88, 430, 292, 0xf7f0e5, 0.92).setOrigin(0);
         panel.setStrokeStyle(2, 0x5a4b3a, 0.8);
 
         this.add.text(48, 104, `人物：${this.currentCharacter.name}`, {
@@ -317,28 +311,28 @@ export default class CultivationScene extends Phaser.Scene {
             lineSpacing: 4,
         });
 
-        this.cycleStageText = this.add.text(252, 298, `周期：${this.cycleStageLabels[this.cycleStageIndex]}`, {
+        this.cycleStageText = this.add.text(252, 278, `周期：${this.cycleStageLabels[this.cycleStageIndex]}`, {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "18px",
             color: "#3d3125",
         });
 
-        this.cultivationRoundText = this.add.text(252, 326, "修炼轮次：未开始", {
+        this.cultivationRoundText = this.add.text(252, 306, "修炼轮次：未开始", {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "16px",
             color: "#3d3125",
         });
 
-        this.cultivationStatusText = this.add.text(48, 392, "点击【开始修行】后抽5张修炼卡进入第一轮出牌。", {
+        this.cultivationStatusText = this.add.text(48, 334, "点击【开始修行】后抽5张修炼卡进入第一轮出牌。", {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "14px",
             color: "#4a3a2b",
             wordWrap: { width: 390 },
         });
 
-        this.breakthroughBtn = this.add.rectangle(336, 360, 110, 30, 0x6b5b46, 0.55).setOrigin(0.5);
+        this.breakthroughBtn = this.add.rectangle(336, 362, 110, 30, 0x6b5b46, 0.55).setOrigin(0.5);
         this.breakthroughBtn.setStrokeStyle(1, 0x9c8a73, 0.8);
-        this.breakthroughText = this.add.text(336, 360, "筑基未解锁", {
+        this.breakthroughText = this.add.text(336, 362, "筑基未解锁", {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "14px",
             color: "#d8ccbc",
@@ -650,7 +644,7 @@ export default class CultivationScene extends Phaser.Scene {
         const slotH = 92;
         const slotGap = 14;
         const slotStartX = (this.scale.width - (slotW * 4 + slotGap * 3)) / 2;
-        const slotY = this.scale.height - 316;
+        const slotY = this.scale.height - 302;
 
         this.cycleSlots = [];
         for (let i = 0; i < 4; i++) {
