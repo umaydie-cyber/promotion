@@ -77,7 +77,7 @@ export default class CharacterSelectScene extends Phaser.Scene {
         btnBg.setStrokeStyle(2, 0x93c5fd, 1);
 
         this.add
-            .text(btnX, btnY, "开始修行", {
+            .text(btnX, btnY, "修真界", {
                 fontFamily: "sans-serif",
                 fontSize: "26px",
                 color: "#ffffff",
