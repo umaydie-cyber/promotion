@@ -61,6 +61,14 @@ type UIButton = {
     enabled: boolean;
 };
 
+type HoldButton = {
+    bg: Phaser.GameObjects.Ellipse;
+    shadow: Phaser.GameObjects.Ellipse;
+    ring: Phaser.GameObjects.Arc;
+    text: Phaser.GameObjects.Text;
+    enabled: boolean;
+};
+
 type HandLayout = {
     cardW: number;
     cardH: number;
@@ -240,7 +248,9 @@ export default class CultivationScene extends Phaser.Scene {
     private breakthroughBtn?: Phaser.GameObjects.Rectangle;
     private breakthroughText?: Phaser.GameObjects.Text;
     private startCultivationBtn?: UIButton;
-    private endCycleBtn?: UIButton;
+    private endCycleBtn?: HoldButton;
+    private endCycleHoldTimer?: Phaser.Time.TimerEvent;
+    private endCycleHoldTriggered = false;
     private cycleDeckObjects: Phaser.GameObjects.GameObject[] = [];
     private cycleSlotObjects: Phaser.GameObjects.GameObject[] = [];
 
@@ -286,9 +296,7 @@ export default class CultivationScene extends Phaser.Scene {
             this.startCultivation();
         });
 
-        this.endCycleBtn = this.makeButton(this.scale.width - 178, this.scale.height - 236, 140, 36, "结束周期", () => {
-            this.endCycleRound();
-        });
+        this.endCycleBtn = this.makeHoldEndCycleButton();
         this.setButtonVisible(this.endCycleBtn, false);
 
         this.add
@@ -1283,24 +1291,110 @@ export default class CultivationScene extends Phaser.Scene {
         return button;
     }
 
-    private setButtonVisible(button: UIButton, visible: boolean) {
+    private makeHoldEndCycleButton(): HoldButton {
+        const x = this.scale.width - 72;
+        const y = 622;
+        const radius = 40;
+
+        const shadow = this.add.ellipse(x + 2, y + 3, radius * 2, radius * 2, 0x1f1811, 0.24).setDepth(9);
+        const btn = this.add
+            .ellipse(x, y, radius * 2, radius * 2, 0x4b3d2f, 0.96)
+            .setDepth(10)
+            .setStrokeStyle(2, 0x86745f, 0.95)
+            .setInteractive({ useHandCursor: true });
+
+        const ring = this.add.arc(x, y, radius + 7, -90, -90, false, 0xe7d6b8, 0.95).setDepth(11).setLineWidth(4, 4);
+        ring.setVisible(false);
+
+        const text = this.add
+            .text(x, y, "长按\n结束", {
+                fontFamily: UI_FONT_FAMILY,
+                fontSize: "14px",
+                color: "#f6ecdc",
+                align: "center",
+            })
+            .setOrigin(0.5)
+            .setDepth(12);
+
+        const holdMs = 550;
+        const onPressRelease = (isPointerOut = false) => {
+            if (this.endCycleHoldTimer) {
+                this.endCycleHoldTimer.remove(false);
+                this.endCycleHoldTimer = undefined;
+            }
+            btn.setScale(1);
+            shadow.setScale(1);
+            ring.setVisible(false);
+            ring.setEndAngle(-90, false);
+            if (!this.endCycleHoldTriggered && !isPointerOut) {
+                this.showToast("请长按结束周期", 900);
+            }
+            this.endCycleHoldTriggered = false;
+        };
+
+        btn.on("pointerdown", () => {
+            if (!button.enabled) return;
+            this.endCycleHoldTriggered = false;
+            btn.setScale(0.96);
+            shadow.setScale(0.96);
+            ring.setVisible(true);
+            ring.setEndAngle(-90, false);
+            this.endCycleHoldTimer = this.time.delayedCall(holdMs, () => {
+                this.endCycleHoldTriggered = true;
+                this.endCycleRound();
+                onPressRelease();
+            });
+            this.tweens.add({
+                targets: ring,
+                props: { endAngle: 270 },
+                duration: holdMs,
+                ease: "Linear",
+            });
+        });
+
+        btn.on("pointerup", () => onPressRelease());
+        btn.on("pointerout", () => onPressRelease(true));
+
+        const button: HoldButton = { bg: btn, shadow, ring, text, enabled: true };
+        return button;
+    }
+
+    private setButtonVisible(button: UIButton | HoldButton, visible: boolean) {
         button.bg.setVisible(visible);
         button.text.setVisible(visible);
         button.shadow.setVisible(visible);
-        button.shine.setVisible(visible);
+        if ("shine" in button) {
+            button.shine.setVisible(visible);
+        }
+        if ("ring" in button) {
+            button.ring.setVisible(false);
+        }
     }
 
-    private setButtonEnabled(button: UIButton, enabled: boolean) {
+    private setButtonEnabled(button: UIButton | HoldButton, enabled: boolean) {
         button.enabled = enabled;
         if (enabled) {
             button.bg.setFillStyle(0x4b3d2f, 0.94);
             button.bg.setInteractive({ useHandCursor: true });
             button.text.setColor("#f6ecdc");
+            if ("ring" in button) {
+                button.ring.setVisible(false);
+                button.bg.setScale(1);
+                button.shadow.setScale(1);
+            }
             return;
         }
         button.bg.disableInteractive();
         button.bg.setFillStyle(0x7a7a7a, 0.95);
         button.text.setColor("#dedede");
+        if ("ring" in button) {
+            button.ring.setVisible(false);
+            if (this.endCycleHoldTimer) {
+                this.endCycleHoldTimer.remove(false);
+                this.endCycleHoldTimer = undefined;
+            }
+            this.endCycleHoldTriggered = false;
+        }
     }
 
     private showToast(msg: string, duration = 1500) {
