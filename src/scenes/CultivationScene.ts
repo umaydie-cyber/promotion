@@ -57,6 +57,14 @@ type UIButton = {
     enabled: boolean;
 };
 
+type HandLayout = {
+    cardW: number;
+    cardH: number;
+    gap: number;
+    startX: number;
+    y: number;
+};
+
 const STARTER_CYCLE_DECK: CycleCard[] = [
     { id: "market", name: "坊市", count: 1, desc: "进入坊市" },
     { id: "travel", name: "游历山河", count: 1, desc: "触发游历事件（占位）" },
@@ -216,6 +224,7 @@ export default class CultivationScene extends Phaser.Scene {
     private startCultivationBtn?: UIButton;
     private endCycleBtn?: UIButton;
     private cycleDeckObjects: Phaser.GameObjects.GameObject[] = [];
+    private cycleSlotObjects: Phaser.GameObjects.GameObject[] = [];
 
     constructor() {
         super({ key: "Cultivation" });
@@ -292,7 +301,7 @@ export default class CultivationScene extends Phaser.Scene {
     }
 
     private renderCharacterPanel() {
-        const panel = this.add.rectangle(30, 88, 430, 292, 0xf7f0e5, 0.92).setOrigin(0);
+        const panel = this.add.rectangle(30, 88, 430, 306, 0xf7f0e5, 0.92).setOrigin(0);
         panel.setStrokeStyle(2, 0x5a4b3a, 0.8);
 
         this.add.text(48, 104, `人物：${this.currentCharacter.name}`, {
@@ -315,21 +324,21 @@ export default class CultivationScene extends Phaser.Scene {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "18px",
             color: "#3d3125",
-            lineSpacing: 6,
+            lineSpacing: 10,
         });
 
         this.resourcesText = this.add.text(252, 140, "", {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "18px",
             color: "#3d3125",
-            lineSpacing: 6,
+            lineSpacing: 10,
         });
 
         this.meridianText = this.add.text(252, 238, "", {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "16px",
             color: "#3d3125",
-            lineSpacing: 4,
+            lineSpacing: 6,
         });
 
         this.cycleStageText = this.add.text(252, 278, `周期：${this.cycleStageLabels[this.cycleStageIndex]}`, {
@@ -390,6 +399,12 @@ export default class CultivationScene extends Phaser.Scene {
         this.duMaiSpiritPerTurn = 0;
         this.cultivationDeck = Phaser.Utils.Array.Shuffle(STARTER_CULTIVATION_DECK.map((id) => CULTIVATION_CARD_DEFS[id]));
         this.cycleDeckObjects.forEach((obj) => {
+            obj.setVisible(false);
+            if ("disableInteractive" in obj) {
+                (obj as Phaser.GameObjects.GameObject & { disableInteractive: () => void }).disableInteractive();
+            }
+        });
+        this.cycleSlotObjects.forEach((obj) => {
             obj.setVisible(false);
             if ("disableInteractive" in obj) {
                 (obj as Phaser.GameObjects.GameObject & { disableInteractive: () => void }).disableInteractive();
@@ -594,12 +609,8 @@ export default class CultivationScene extends Phaser.Scene {
         this.clearHandViews();
         if (this.handCards.length === 0) return;
 
-        const cardW = 168;
-        const cardH = 228;
-        const gap = 16;
-        const totalW = this.handCards.length * cardW + (this.handCards.length - 1) * gap;
-        const startX = (this.scale.width - totalW) / 2;
-        const y = 500;
+        const layout = this.getHandLayout(this.handCards.length);
+        const { cardW, cardH, gap, startX, y } = layout;
 
         this.handCards.forEach((card, idx) => {
             const x = startX + idx * (cardW + gap);
@@ -612,11 +623,13 @@ export default class CultivationScene extends Phaser.Scene {
 
             const cardShell = this.add.graphics();
             cardShell.fillStyle(0x2a221a, 0.82);
-            cardShell.fillRoundedRect(x - 4, y - 4, cardW + 8, cardH + 8, 18);
+            const shellRadius = Math.max(10, Math.floor(cardW * 0.11));
+            const cardRadius = Math.max(8, Math.floor(cardW * 0.085));
+            cardShell.fillRoundedRect(x - 4, y - 4, cardW + 8, cardH + 8, shellRadius);
             cardShell.fillStyle(0xf3ebdc, 1);
-            cardShell.fillRoundedRect(x, y, cardW, cardH, 14);
+            cardShell.fillRoundedRect(x, y, cardW, cardH, cardRadius);
             cardShell.lineStyle(4, 0x7f6f58, 0.95);
-            cardShell.strokeRoundedRect(x, y, cardW, cardH, 14);
+            cardShell.strokeRoundedRect(x, y, cardW, cardH, cardRadius);
 
             const marble = this.add.graphics();
             marble.lineStyle(1.2, 0xe6dbc7, 0.9);
@@ -630,23 +643,23 @@ export default class CultivationScene extends Phaser.Scene {
 
             const frame = this.add.graphics();
             frame.fillStyle(0xdbc9ad, 0.95);
-            frame.fillRoundedRect(x + 10, y + 34, cardW - 20, 88, 10);
+            frame.fillRoundedRect(x + 10, y + 34, cardW - 20, cardH * 0.38, 10);
             frame.lineStyle(2, 0x8d7356, 0.95);
-            frame.strokeRoundedRect(x + 10, y + 34, cardW - 20, 88, 10);
+            frame.strokeRoundedRect(x + 10, y + 34, cardW - 20, cardH * 0.38, 10);
 
             const artBg = this.add.graphics();
             artBg.fillGradientStyle(artStyle.colorA, artStyle.colorA, artStyle.colorB, artStyle.colorB, 1);
-            artBg.fillRoundedRect(x + 16, y + 40, cardW - 32, 72, 8);
+            artBg.fillRoundedRect(x + 16, y + 40, cardW - 32, cardH * 0.31, 8);
 
             const artName = this.add.text(x + cardW / 2, y + 56, card.name, {
                 fontFamily: UI_FONT_FAMILY,
-                fontSize: "19px",
+                fontSize: `${Math.max(14, Math.floor(cardW * 0.11))}px`,
                 color: "#2e2419",
             }).setOrigin(0.5, 0);
 
             const artIcon = this.add.text(x + cardW / 2, y + 86, artStyle.icon, {
                 fontFamily: UI_FONT_FAMILY,
-                fontSize: "30px",
+                fontSize: `${Math.max(20, Math.floor(cardW * 0.18))}px`,
                 color: "#fff8eb",
             }).setOrigin(0.5);
 
@@ -654,7 +667,7 @@ export default class CultivationScene extends Phaser.Scene {
             energyBadge.setStrokeStyle(3, 0xd8ebff, 1);
             const energyCostText = this.add.text(energyBadge.x, energyBadge.y, `${card.cost.energy}`, {
                 fontFamily: UI_FONT_FAMILY,
-                fontSize: "18px",
+                fontSize: `${Math.max(14, Math.floor(cardW * 0.1))}px`,
                 color: "#ffffff",
                 fontStyle: "bold",
             }).setOrigin(0.5);
@@ -663,7 +676,7 @@ export default class CultivationScene extends Phaser.Scene {
             spiritBadge.setStrokeStyle(3, spiritCost > 0 ? 0xe7d5ff : 0xc4ccd8, 1);
             const spiritCostText = this.add.text(spiritBadge.x, spiritBadge.y, `${spiritCost}`, {
                 fontFamily: UI_FONT_FAMILY,
-                fontSize: "18px",
+                fontSize: `${Math.max(14, Math.floor(cardW * 0.1))}px`,
                 color: "#ffffff",
                 fontStyle: "bold",
             }).setOrigin(0.5);
@@ -672,20 +685,20 @@ export default class CultivationScene extends Phaser.Scene {
             realmEllipse.setStrokeStyle(2, realmBadge.stroke, 1);
             const realmText = this.add.text(x + cardW / 2, y + 130, card.realm, {
                 fontFamily: UI_FONT_FAMILY,
-                fontSize: "14px",
+                fontSize: `${Math.max(12, Math.floor(cardW * 0.085))}px`,
                 color: realmBadge.text,
                 fontStyle: "bold",
             }).setOrigin(0.5);
 
             const descPanel = this.add.graphics();
             descPanel.fillStyle(0xe8dcc7, 0.96);
-            descPanel.fillRoundedRect(x + 12, y + 144, cardW - 24, 72, 8);
+            descPanel.fillRoundedRect(x + 12, y + 144, cardW - 24, cardH - 156, 8);
             descPanel.lineStyle(1.5, 0xa48a68, 0.95);
-            descPanel.strokeRoundedRect(x + 12, y + 144, cardW - 24, 72, 8);
+            descPanel.strokeRoundedRect(x + 12, y + 144, cardW - 24, cardH - 156, 8);
 
             const descText = this.add.text(x + 20, y + 152, `${card.desc}\n${card.upgradedDesc}`, {
                 fontFamily: UI_FONT_FAMILY,
-                fontSize: "12px",
+                fontSize: `${Math.max(10, Math.floor(cardW * 0.072))}px`,
                 color: "#4b3f31",
                 wordWrap: { width: cardW - 40 },
                 lineSpacing: 2,
@@ -719,6 +732,28 @@ export default class CultivationScene extends Phaser.Scene {
         });
     }
 
+    private getHandLayout(cardCount: number): HandLayout {
+        const safeWidth = this.scale.width - 48;
+        const maxCardW = 168;
+        const minCardW = 112;
+        const gapRatio = 0.1;
+
+        let cardW = maxCardW;
+        let gap = Math.round(cardW * gapRatio);
+        let totalW = cardCount * cardW + (cardCount - 1) * gap;
+
+        if (totalW > safeWidth) {
+            const raw = safeWidth / (cardCount + (cardCount - 1) * gapRatio);
+            cardW = Phaser.Math.Clamp(Math.floor(raw), minCardW, maxCardW);
+            gap = Math.max(8, Math.round(cardW * gapRatio));
+            totalW = cardCount * cardW + (cardCount - 1) * gap;
+        }
+
+        const cardH = Math.round(cardW * 1.36);
+        const startX = (this.scale.width - totalW) / 2;
+        return { cardW, cardH, gap, startX, y: 500 };
+    }
+
     private clearHandViews() {
         this.handCardViews.forEach((v) => v.container.destroy(true));
         this.handCardViews = [];
@@ -732,6 +767,7 @@ export default class CultivationScene extends Phaser.Scene {
         const slotY = this.scale.height - 302;
 
         this.cycleSlots = [];
+        this.cycleSlotObjects = [];
         for (let i = 0; i < 4; i++) {
             const x = slotStartX + i * (slotW + slotGap);
             const bg = this.add
@@ -749,6 +785,7 @@ export default class CultivationScene extends Phaser.Scene {
             zone.setRectangleDropZone(slotW, slotH);
 
             this.cycleSlots.push({ zone, bg, label });
+            this.cycleSlotObjects.push(bg, label, zone);
         }
 
         const cardW = 118;
@@ -868,6 +905,7 @@ export default class CultivationScene extends Phaser.Scene {
 
                 slot.deleteBtn = deleteBtn;
                 slot.deleteText = deleteText;
+                this.cycleSlotObjects.push(deleteBtn, deleteText);
             },
         );
     }
