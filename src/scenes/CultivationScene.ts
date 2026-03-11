@@ -50,6 +50,11 @@ type HandCardView = {
     baseY: number;
 };
 
+type ScrollMessage = {
+    text: Phaser.GameObjects.Text;
+    y: number;
+};
+
 type RealmTier = "炼气" | "筑基" | "金丹" | "元婴" | "化神";
 
 type UIButton = {
@@ -231,6 +236,11 @@ export default class CultivationScene extends Phaser.Scene {
     private discardPileText?: Phaser.GameObjects.Text;
     private deckPileText?: Phaser.GameObjects.Text;
     private resourceWarningText?: Phaser.GameObjects.Text;
+    private battleDeckTipsBg?: Phaser.GameObjects.Rectangle;
+    private battleDeckTipsMask?: Phaser.Display.Masks.GeometryMask;
+    private battleDeckTipsMessages: ScrollMessage[] = [];
+    private readonly battleDeckTipsLineHeight = 22;
+    private readonly battleDeckTipsMaxVisible = 3;
 
     private cultivationStarted = false;
     private renMaiActive = false;
@@ -279,16 +289,20 @@ export default class CultivationScene extends Phaser.Scene {
             this.showToast(`战斗卡组：${battleDeck}`);
         });
 
+        this.setupBattleDeckTipsArea();
         this.renderCycleCardsArea();
         this.renderCultivationArea();
 
-        this.startCultivationBtn = this.makeButton(this.scale.width - 332, this.scale.height - 278, 140, 36, "开始修行", () => {
+        const cycleBtnX = this.scale.width - 176;
+        const cycleBtnY = this.scale.height - 278;
+
+        this.startCultivationBtn = this.makeButton(cycleBtnX, cycleBtnY, 140, 36, "开始修行", () => {
             this.startCultivation();
         });
         this.setButtonVisible(this.startCultivationBtn, true);
         this.setButtonEnabled(this.startCultivationBtn, false);
 
-        this.endCycleBtn = this.makeButton(this.scale.width - 176, this.scale.height - 278, 140, 36, "结束回合", () => {
+        this.endCycleBtn = this.makeButton(cycleBtnX, cycleBtnY, 140, 36, "结束回合", () => {
             this.endCycleRound();
         });
         this.setButtonVisible(this.endCycleBtn, false);
@@ -303,6 +317,33 @@ export default class CultivationScene extends Phaser.Scene {
                 if (this.scale.isFullscreen) this.scale.stopFullscreen();
                 else this.scale.startFullscreen();
             });
+    }
+
+
+    private setupBattleDeckTipsArea() {
+        const areaW = 300;
+        const areaH = this.battleDeckTipsLineHeight * this.battleDeckTipsMaxVisible + 16;
+        const areaX = this.scale.width - 340;
+        const areaY = 76;
+
+        this.battleDeckTipsBg = this.add
+            .rectangle(areaX, areaY, areaW, areaH, 0x2e241a, 0.88)
+            .setOrigin(0)
+            .setStrokeStyle(1, 0xc6ad84, 0.9)
+            .setDepth(600);
+
+        this.add.text(areaX + 10, areaY + 6, "战斗卡组提示", {
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "13px",
+            color: "#f5dec1",
+        }).setDepth(601);
+
+        const maskGraphics = this.make.graphics({ x: 0, y: 0, add: false });
+        maskGraphics.fillStyle(0xffffff, 1);
+        maskGraphics.fillRect(areaX + 8, areaY + 24, areaW - 16, areaH - 30);
+        this.battleDeckTipsMask = maskGraphics.createGeometryMask();
+
+        this.pushBattleDeckTip("拖拽并摆好4张周期卡后，方可开始修行。", false);
     }
 
     private drawInkWashBackground() {
@@ -503,6 +544,7 @@ export default class CultivationScene extends Phaser.Scene {
         this.showStatus("修行开始：已抽5张修炼卡，进入第一轮出牌。", "#2f2419");
         if (this.startCultivationBtn) {
             this.setButtonEnabled(this.startCultivationBtn, false);
+            this.setButtonVisible(this.startCultivationBtn, false);
         }
         if (this.endCycleBtn) {
             this.setButtonVisible(this.endCycleBtn, true);
@@ -543,6 +585,7 @@ export default class CultivationScene extends Phaser.Scene {
             this.cycleDeckObjects.forEach((obj) => obj.setVisible(true));
             this.cycleSlotObjects.forEach((obj) => obj.setVisible(true));
             if (this.startCultivationBtn) {
+                this.setButtonVisible(this.startCultivationBtn, true);
                 this.setButtonEnabled(this.startCultivationBtn, this.allCycleSlotsFilled());
             }
             if (this.endCycleBtn) {
@@ -1016,6 +1059,7 @@ export default class CultivationScene extends Phaser.Scene {
         const missings = missing ?? this.getCostCheck(card).missing;
         const missText = missings.length > 0 ? `缺少：${missings.join("、")}` : "资源不足";
         this.showToast(`资源不足，无法打出【${card.name}】（${missText}）`, 1400);
+        this.pushBattleDeckTip(`【${card.name}】无法打出，${missText}。`);
 
         if (this.resourceWarningText) {
             this.resourceWarningText.setText(`资源不足：${missText}`);
@@ -1031,15 +1075,57 @@ export default class CultivationScene extends Phaser.Scene {
         if (view) {
             this.tweens.add({
                 targets: view.container,
-                x: view.baseX - 8,
-                duration: 36,
+                x: view.baseX - 10,
+                y: view.baseY + 3,
+                angle: -3,
+                duration: 42,
                 yoyo: true,
-                repeat: 3,
+                repeat: 4,
                 onComplete: () => {
                     view.container.x = view.baseX;
+                    view.container.y = view.baseY;
+                    view.container.angle = 0;
                 },
             });
         }
+    }
+
+    private pushBattleDeckTip(message: string, animate = true) {
+        if (!this.battleDeckTipsBg) return;
+
+        const textX = this.battleDeckTipsBg.x + 14;
+        const textY = this.battleDeckTipsBg.y + 28;
+        const contentW = this.battleDeckTipsBg.width - 28;
+        const text = this.add.text(textX, textY, `• ${message}`, {
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "14px",
+            color: "#ffe8cb",
+            wordWrap: { width: contentW },
+        }).setDepth(602);
+        if (this.battleDeckTipsMask) {
+            text.setMask(this.battleDeckTipsMask);
+        }
+
+        this.battleDeckTipsMessages.forEach((item, idx) => {
+            item.y = textY + (idx + 1) * this.battleDeckTipsLineHeight;
+            if (animate) {
+                this.tweens.add({ targets: item.text, y: item.y, duration: 180, ease: "Sine.Out" });
+            } else {
+                item.text.y = item.y;
+            }
+        });
+
+        this.battleDeckTipsMessages.unshift({ text, y: textY });
+
+        while (this.battleDeckTipsMessages.length > 8) {
+            const removed = this.battleDeckTipsMessages.pop();
+            removed?.text.destroy();
+        }
+
+        const visibleBottom = textY + this.battleDeckTipsLineHeight * this.battleDeckTipsMaxVisible;
+        this.battleDeckTipsMessages.forEach((item) => {
+            item.text.setVisible(item.y <= visibleBottom);
+        });
     }
 
     private clearHandViews() {
@@ -1204,6 +1290,7 @@ export default class CultivationScene extends Phaser.Scene {
                     slot.deleteBtn = undefined;
                     slot.deleteText = undefined;
                     if (this.startCultivationBtn) {
+                        this.setButtonVisible(this.startCultivationBtn, !this.cultivationStarted);
                         this.setButtonEnabled(this.startCultivationBtn, this.allCycleSlotsFilled() && !this.cultivationStarted);
                     }
                 });
@@ -1212,6 +1299,7 @@ export default class CultivationScene extends Phaser.Scene {
                 slot.deleteText = deleteText;
                 this.cycleSlotObjects.push(deleteBtn, deleteText);
                 if (this.startCultivationBtn) {
+                    this.setButtonVisible(this.startCultivationBtn, !this.cultivationStarted);
                     this.setButtonEnabled(this.startCultivationBtn, this.allCycleSlotsFilled() && !this.cultivationStarted);
                 }
             },
