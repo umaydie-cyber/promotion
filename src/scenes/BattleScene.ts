@@ -113,6 +113,8 @@ export default class BattleScene extends Phaser.Scene {
     };
 
     private handViews: CardView[] = [];
+    private forceEndTurnRequested = false;
+    private playerSwordIntent = 0;
 
     // ======== 选目标模式（核心） ========
     private targetMode:

@@ -350,7 +350,8 @@ export default class CultivationScene extends Phaser.Scene {
             color: "#f5dec1",
         }).setDepth(601);
 
-        const maskGraphics = this.make.graphics({ x: 0, y: 0, add: false });
+        const maskGraphics = this.add.graphics({ x: 0, y: 0 });
+        maskGraphics.setVisible(false);
         maskGraphics.fillStyle(0xffffff, 1);
         maskGraphics.fillRect(areaX + 8, areaY + 24, areaW - 16, areaH - 30);
         this.battleDeckTipsMask = maskGraphics.createGeometryMask();
@@ -537,7 +538,7 @@ export default class CultivationScene extends Phaser.Scene {
         this.cultivationDeck = Phaser.Utils.Array.Shuffle(STARTER_CULTIVATION_DECK.map((id) => CULTIVATION_CARD_DEFS[id]));
         this.cultivationDeckTotal = this.cultivationDeck.length;
         this.cycleSlotObjects.forEach((obj) => {
-            if (obj.active) obj.setVisible(false);
+            if (obj.active) this.setSceneObjectVisible(obj, false);
         });
         this.cultivationDiscard = [];
         this.handCards = [];
@@ -593,7 +594,7 @@ export default class CultivationScene extends Phaser.Scene {
             this.updateCycleStageText();
             this.updateRoundText();
             this.cycleSlotObjects.forEach((obj) => {
-                if (obj.active) obj.setVisible(true);
+                if (obj.active) this.setSceneObjectVisible(obj, true);
             });
             if (this.startCultivationBtn) {
                 this.setButtonVisible(this.startCultivationBtn, true);
@@ -1500,14 +1501,14 @@ export default class CultivationScene extends Phaser.Scene {
                 ];
             }
 
-            return Array.from({ length: starter.count }, () => this.getBattleDeckViewerCard(def));
+            return Array.from({ length: starter.count }, () => this.getBattleDeckViewerCard(def, starter.name));
         });
     }
 
-    private getBattleDeckViewerCard(card: CardDef): DeckViewerCardConfig {
+    private getBattleDeckViewerCard(card: CardDef, titleOverride?: string): DeckViewerCardConfig {
         const isAttack = card.type === "attack";
         return {
-            title: card.name,
+            title: titleOverride ?? card.name,
             subtitle: `${isAttack ? "攻击" : "技能"} · 灵力${card.cost}${card.target === "enemy" ? " · 单体" : ""}`,
             desc: card.desc,
             accent: isAttack ? 0xa94d3a : 0x4d6ea8,
@@ -1588,6 +1589,10 @@ export default class CultivationScene extends Phaser.Scene {
 
     private updateCycleStageText() {
         this.cycleStageText?.setText(`周期：${this.cycleStageLabels[this.cycleStageIndex]}`);
+    }
+
+    private setSceneObjectVisible(object: Phaser.GameObjects.GameObject, visible: boolean) {
+        (object as Phaser.GameObjects.GameObject & { setVisible: (value: boolean) => Phaser.GameObjects.GameObject }).setVisible(visible);
     }
 
     private makeButton(x: number, y: number, w: number, h: number, label: string, onClick: () => void): UIButton {
