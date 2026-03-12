@@ -756,8 +756,10 @@ export default class CultivationScene extends Phaser.Scene {
             duration: 260,
             ease: "Cubic.In",
             onComplete: () => {
-                this.handCards.splice(idx, 1);
-                this.playCultivationCard(card);
+                const played = this.playCultivationCard(card);
+                if (played) {
+                    this.handCards.splice(idx, 1);
+                }
                 this.selectedCardIndex = null;
                 this.isPlayingCard = false;
             },
@@ -955,6 +957,11 @@ export default class CultivationScene extends Phaser.Scene {
             bg.setInteractive({ draggable: true, useHandCursor: true });
             bg.on("dragstart", () => {
                 if (this.isPlayingCard) return;
+                const currentCheck = this.getCostCheck(card);
+                if (!currentCheck.canAfford) {
+                    this.showResourceLackFeedback(card, { index: idx, def: card, container, bg, baseX: x, baseY: y }, currentCheck.missing);
+                    return;
+                }
                 this.releaseSelectedCard();
                 this.selectedCardIndex = idx;
                 this.draggingCard = true;
@@ -980,6 +987,14 @@ export default class CultivationScene extends Phaser.Scene {
 
             bg.on("pointerdown", () => {
                 if (this.isPlayingCard) return;
+
+                const currentCheck = this.getCostCheck(card);
+                if (!currentCheck.canAfford) {
+                    this.showResourceLackFeedback(card, { index: idx, def: card, container, bg, baseX: x, baseY: y }, currentCheck.missing);
+                    this.releaseSelectedCard(true);
+                    return;
+                }
+
                 if (this.selectedCardIndex === idx) {
                     this.tryPlaySelectedCard();
                     return;
