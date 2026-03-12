@@ -1,5 +1,6 @@
 import * as Phaser from "phaser";
 import { CHARACTERS, type CharacterDef } from "../data/characters";
+import { getCardDef, type CardDef, type CardId } from "../data/cards";
 
 type CycleCardId = "market" | "travel" | "training" | "bounty";
 
@@ -10,19 +11,10 @@ type CycleCard = {
     desc: string;
 };
 
-type CycleCardView = {
-    card: CycleCard;
-    bg: Phaser.GameObjects.Rectangle;
-    originX: number;
-    originY: number;
-};
-
 type CycleSlot = {
-    zone: Phaser.GameObjects.Zone;
     bg: Phaser.GameObjects.Rectangle;
     label: Phaser.GameObjects.Text;
     card?: CycleCard;
-    cardView?: CycleCardView;
     deleteBtn?: Phaser.GameObjects.Rectangle;
     deleteText?: Phaser.GameObjects.Text;
 };
@@ -77,6 +69,20 @@ type HandLayout = {
 type CostCheck = {
     canAfford: boolean;
     missing: string[];
+};
+
+type DeckViewerKind = "cycle" | "cultivation" | "battle";
+
+type DeckViewerCardConfig = {
+    title: string;
+    subtitle: string;
+    desc: string;
+    accent: number;
+    accentLight: number;
+    badgeText?: string;
+    footerText?: string;
+    dimmed?: boolean;
+    onClick?: () => void;
 };
 
 const STARTER_CYCLE_DECK: CycleCard[] = [
@@ -255,8 +261,9 @@ export default class CultivationScene extends Phaser.Scene {
     private breakthroughText?: Phaser.GameObjects.Text;
     private startCultivationBtn?: UIButton;
     private endCycleBtn?: UIButton;
-    private cycleDeckObjects: Phaser.GameObjects.GameObject[] = [];
     private cycleSlotObjects: Phaser.GameObjects.GameObject[] = [];
+    private deckViewerObjects: Phaser.GameObjects.GameObject[] = [];
+    private currentDeckViewer: DeckViewerKind | null = null;
 
     constructor() {
         super({ key: "Cultivation" });
@@ -281,16 +288,15 @@ export default class CultivationScene extends Phaser.Scene {
         this.renderCharacterPanel();
 
         this.makeButton(this.scale.width - 324, 34, 88, 36, "周期卡组", () => {
-            this.showToast(`周期卡组：${STARTER_CYCLE_DECK.map((c) => `${c.name}x${c.count}`).join("、")}`);
+            this.toggleDeckViewer("cycle");
         });
 
         this.makeButton(this.scale.width - 226, 34, 88, 36, "修炼卡组", () => {
-            this.showToast("修炼卡组：引气入体x1、顿悟x1、运气x4、凝神x3、观想x1");
+            this.toggleDeckViewer("cultivation");
         });
 
         this.makeButton(this.scale.width - 128, 34, 88, 36, "战斗卡组", () => {
-            const battleDeck = this.currentCharacter.starterDeck.map((c) => `${c.name}x${c.count}`).join("、");
-            this.showToast(`战斗卡组：${battleDeck}`);
+            this.toggleDeckViewer("battle");
         });
 
         this.setupBattleDeckTipsArea();
@@ -518,6 +524,7 @@ export default class CultivationScene extends Phaser.Scene {
         }
 
         this.cultivationStarted = true;
+        this.closeDeckViewer();
         this.roundIndex = 0;
         this.cycleStageIndex = 1;
         this.energy = 3;
@@ -529,11 +536,8 @@ export default class CultivationScene extends Phaser.Scene {
         this.duMaiSpiritPerTurn = 0;
         this.cultivationDeck = Phaser.Utils.Array.Shuffle(STARTER_CULTIVATION_DECK.map((id) => CULTIVATION_CARD_DEFS[id]));
         this.cultivationDeckTotal = this.cultivationDeck.length;
-        this.cycleDeckObjects.forEach((obj) => {
-            obj.setVisible(false);
-        });
         this.cycleSlotObjects.forEach((obj) => {
-            obj.setVisible(false);
+            if (obj.active) obj.setVisible(false);
         });
         this.cultivationDiscard = [];
         this.handCards = [];
@@ -588,8 +592,9 @@ export default class CultivationScene extends Phaser.Scene {
             });
             this.updateCycleStageText();
             this.updateRoundText();
-            this.cycleDeckObjects.forEach((obj) => obj.setVisible(true));
-            this.cycleSlotObjects.forEach((obj) => obj.setVisible(true));
+            this.cycleSlotObjects.forEach((obj) => {
+                if (obj.active) obj.setVisible(true);
+            });
             if (this.startCultivationBtn) {
                 this.setButtonVisible(this.startCultivationBtn, true);
                 this.setButtonEnabled(this.startCultivationBtn, this.allCycleSlotsFilled());
@@ -1214,145 +1219,371 @@ export default class CultivationScene extends Phaser.Scene {
                 align: "center",
             }).setOrigin(0.5);
 
-            const zone = this.add.zone(x, slotY, slotW, slotH).setOrigin(0);
-            zone.setRectangleDropZone(slotW, slotH);
-
-            this.cycleSlots.push({ zone, bg, label });
-            this.cycleSlotObjects.push(bg, label, zone);
+            this.cycleSlots.push({ bg, label });
+            this.cycleSlotObjects.push(bg, label);
         }
 
-        const cardW = 118;
-        const cardH = 126;
-        const cardGap = 16;
-        const expandedDeck: CycleCard[] = STARTER_CYCLE_DECK.flatMap((card) =>
-            Array.from({ length: card.count }, () => ({ ...card, count: 1 })),
-        );
-        const cardsTotalW = expandedDeck.length * cardW + (expandedDeck.length - 1) * cardGap;
-        const startX = (this.scale.width - cardsTotalW) / 2;
-        const cardY = this.scale.height - cardH - 18;
-
-        const cycleCardViews: CycleCardView[] = [];
-        this.cycleDeckObjects = [];
-
-        expandedDeck.forEach((card, idx) => {
-            const x = startX + idx * (cardW + cardGap);
-            const bg = this.add
-                .rectangle(x, cardY, cardW, cardH, 0xf5efe3, 0.98)
-                .setOrigin(0)
-                .setStrokeStyle(2, 0x4d4033, 0.95)
-                .setInteractive({ draggable: true, useHandCursor: true });
-
-            const header = this.add.rectangle(x + 8, cardY + 8, cardW - 16, 44, 0xe0d2bb, 0.58).setOrigin(0);
-            const nameText = this.add.text(x + cardW / 2, cardY + 18, card.name, {
-                fontFamily: UI_FONT_FAMILY,
-                fontSize: "21px",
-                color: "#2e2419",
-            }).setOrigin(0.5, 0);
-
-            const descText = this.add.text(x + 10, cardY + 66, card.desc, {
-                fontFamily: UI_FONT_FAMILY,
-                fontSize: "14px",
-                color: "#5c4d3f",
-                wordWrap: { width: cardW - 20 },
-            });
-
-            this.cycleDeckObjects.push(bg, header, nameText, descText);
-            cycleCardViews.push({ card, bg, originX: x, originY: cardY });
-        });
-
-        this.input.on("drag", (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dragX: number, dragY: number) => {
-            const dragTarget = gameObject as Phaser.GameObjects.Rectangle;
-            dragTarget.setPosition(dragX, dragY);
-        });
-
-        this.input.on(
-            "dragend",
-            (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dropped: boolean) => {
-                const dragTarget = gameObject as Phaser.GameObjects.Rectangle;
-                const view = cycleCardViews.find((v) => v.bg === dragTarget);
-                if (!view) {
-                    return;
-                }
-                if (!dropped) {
-                    dragTarget.setPosition(view.originX, view.originY);
-                }
-            },
-        );
-
-        this.input.on(
-            "drop",
-            (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dropZone: Phaser.GameObjects.GameObject) => {
-                const dragTarget = gameObject as Phaser.GameObjects.Rectangle;
-                const view = cycleCardViews.find((v) => v.bg === dragTarget);
-                const slot = this.cycleSlots.find((s) => s.zone === dropZone);
-                if (!view || !slot || slot.card) {
-                    return;
-                }
-
-                slot.card = view.card;
-                slot.cardView = view;
-                slot.label.setText(`第${this.cycleSlots.indexOf(slot) + 1}轮\n${view.card.name}`);
-                slot.bg.setFillStyle(0xe8dcc9, 0.95);
-
-                dragTarget.disableInteractive();
-                dragTarget.setVisible(false);
-
-                if (slot.deleteBtn) {
-                    slot.deleteBtn.destroy();
-                }
-                if (slot.deleteText) {
-                    slot.deleteText.destroy();
-                }
-
-                const deleteBtn = this.add
-                    .rectangle(slot.bg.x + slot.bg.width - 12, slot.bg.y + 12, 18, 18, 0x7b2b22, 0.95)
-                    .setOrigin(0.5)
-                    .setDepth(30)
-                    .setStrokeStyle(1, 0xe9d8c0, 0.9)
-                    .setInteractive({ useHandCursor: true });
-
-                const deleteText = this.add
-                    .text(deleteBtn.x, deleteBtn.y - 1, "×", {
-                        fontFamily: UI_FONT_FAMILY,
-                        fontSize: "15px",
-                        color: "#f8e7d5",
-                    })
-                    .setOrigin(0.5)
-                    .setDepth(31);
-
-                deleteBtn.on("pointerdown", () => {
-                    slot.card = undefined;
-                    slot.cardView = undefined;
-                    slot.label.setText(`第${this.cycleSlots.indexOf(slot) + 1}轮\n拖入周期卡`);
-                    slot.bg.setFillStyle(0xf8f3ea, 0.8);
-
-                    view.bg.setPosition(view.originX, view.originY);
-                    view.bg.setVisible(true);
-                    view.bg.setInteractive({ draggable: true, useHandCursor: true });
-
-                    deleteBtn.destroy();
-                    deleteText.destroy();
-                    slot.deleteBtn = undefined;
-                    slot.deleteText = undefined;
-                    if (this.startCultivationBtn) {
-                        this.setButtonVisible(this.startCultivationBtn, !this.cultivationStarted);
-                        this.setButtonEnabled(this.startCultivationBtn, this.allCycleSlotsFilled() && !this.cultivationStarted);
-                    }
-                });
-
-                slot.deleteBtn = deleteBtn;
-                slot.deleteText = deleteText;
-                this.cycleSlotObjects.push(deleteBtn, deleteText);
-                if (this.startCultivationBtn) {
-                    this.setButtonVisible(this.startCultivationBtn, !this.cultivationStarted);
-                    this.setButtonEnabled(this.startCultivationBtn, this.allCycleSlotsFilled() && !this.cultivationStarted);
-                }
-            },
-        );
+        const hint = this.add.text(this.scale.width / 2, slotY + slotH + 18, "点击顶部【周期卡组】弹出卡组面板，再选择卡牌填入 4 个阶段。", {
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "15px",
+            color: "#5f4d3c",
+        }).setOrigin(0.5, 0);
+        this.cycleSlotObjects.push(hint);
 
         if (this.startCultivationBtn) {
             this.setButtonEnabled(this.startCultivationBtn, this.allCycleSlotsFilled() && !this.cultivationStarted);
         }
+    }
+
+    private assignCycleCardToNextSlot(cardId: CycleCardId) {
+        if (this.cultivationStarted) {
+            this.showToast("修行中无法调整周期，请在周期结束后再重新编排。", 1500);
+            return;
+        }
+
+        const template = STARTER_CYCLE_DECK.find((card) => card.id === cardId);
+        if (!template) return;
+
+        const usedCount = this.cycleSlots.filter((slot) => slot.card?.id === cardId).length;
+        if (usedCount >= template.count) {
+            this.showToast(`【${template.name}】已全部编入周期。`, 1400);
+            return;
+        }
+
+        const slot = this.cycleSlots.find((item) => !item.card);
+        if (!slot) {
+            this.showToast("4 个阶段都已排满，请先删除再重新选择。", 1400);
+            return;
+        }
+
+        slot.card = { ...template, count: 1 };
+        slot.label.setText(`第${this.cycleSlots.indexOf(slot) + 1}轮\n${template.name}`);
+        slot.bg.setFillStyle(0xe8dcc9, 0.95);
+        this.ensureCycleSlotDeleteButton(slot);
+
+        if (this.startCultivationBtn) {
+            this.setButtonVisible(this.startCultivationBtn, !this.cultivationStarted);
+            this.setButtonEnabled(this.startCultivationBtn, this.allCycleSlotsFilled() && !this.cultivationStarted);
+        }
+
+        if (this.currentDeckViewer === "cycle") {
+            this.openDeckViewer("cycle");
+        }
+    }
+
+    private clearCycleSlot(slot: CycleSlot) {
+        slot.card = undefined;
+        slot.label.setText(`第${this.cycleSlots.indexOf(slot) + 1}轮\n拖入周期卡`);
+        slot.bg.setFillStyle(0xf8f3ea, 0.8);
+        slot.deleteBtn?.destroy();
+        slot.deleteText?.destroy();
+        slot.deleteBtn = undefined;
+        slot.deleteText = undefined;
+
+        if (this.startCultivationBtn) {
+            this.setButtonVisible(this.startCultivationBtn, !this.cultivationStarted);
+            this.setButtonEnabled(this.startCultivationBtn, this.allCycleSlotsFilled() && !this.cultivationStarted);
+        }
+
+        if (this.currentDeckViewer === "cycle") {
+            this.openDeckViewer("cycle");
+        }
+    }
+
+    private ensureCycleSlotDeleteButton(slot: CycleSlot) {
+        slot.deleteBtn?.destroy();
+        slot.deleteText?.destroy();
+
+        const deleteBtn = this.add
+            .rectangle(slot.bg.x + slot.bg.width - 12, slot.bg.y + 12, 18, 18, 0x7b2b22, 0.95)
+            .setOrigin(0.5)
+            .setDepth(30)
+            .setStrokeStyle(1, 0xe9d8c0, 0.9)
+            .setInteractive({ useHandCursor: true });
+
+        const deleteText = this.add
+            .text(deleteBtn.x, deleteBtn.y - 1, "×", {
+                fontFamily: UI_FONT_FAMILY,
+                fontSize: "15px",
+                color: "#f8e7d5",
+            })
+            .setOrigin(0.5)
+            .setDepth(31);
+
+        deleteBtn.on("pointerdown", () => {
+            this.clearCycleSlot(slot);
+        });
+
+        slot.deleteBtn = deleteBtn;
+        slot.deleteText = deleteText;
+        this.cycleSlotObjects.push(deleteBtn, deleteText);
+    }
+
+    private toggleDeckViewer(kind: DeckViewerKind) {
+        if (this.currentDeckViewer === kind) {
+            this.closeDeckViewer();
+            return;
+        }
+        this.openDeckViewer(kind);
+    }
+
+    private closeDeckViewer() {
+        this.deckViewerObjects.forEach((obj) => obj.destroy());
+        this.deckViewerObjects = [];
+        this.currentDeckViewer = null;
+    }
+
+    private openDeckViewer(kind: DeckViewerKind) {
+        this.closeDeckViewer();
+        this.currentDeckViewer = kind;
+
+        const overlay = this.add
+            .rectangle(0, 0, this.scale.width, this.scale.height, 0x150f0b, 0.62)
+            .setOrigin(0)
+            .setDepth(1400)
+            .setInteractive({ useHandCursor: true });
+        overlay.on("pointerdown", () => this.closeDeckViewer());
+
+        const panelW = 820;
+        const panelH = 548;
+        const panelX = (this.scale.width - panelW) / 2;
+        const panelY = (this.scale.height - panelH) / 2;
+        const panel = this.add
+            .rectangle(panelX, panelY, panelW, panelH, 0xf6efe2, 0.98)
+            .setOrigin(0)
+            .setDepth(1401)
+            .setStrokeStyle(2, 0x5f4d3a, 0.92)
+            .setInteractive();
+
+        const titleMap: Record<DeckViewerKind, string> = {
+            cycle: "周期卡组",
+            cultivation: "修炼卡组",
+            battle: "战斗卡组",
+        };
+        const subtitleMap: Record<DeckViewerKind, string> = {
+            cycle: this.cultivationStarted
+                ? "当前周期已锁定，仅供查看。"
+                : "点击卡牌可依次填入 4 个周期阶段，删除槽位中的卡牌可重新编排。",
+            cultivation: this.cultivationStarted
+                ? `当前修炼卡组：手牌${this.handCards.length} / 牌库${this.cultivationDeck.length} / 弃牌${this.cultivationDiscard.length}`
+                : "当前显示初始修炼卡组，开局洗牌后将从这里抽取手牌。",
+            battle: `当前角色 ${this.currentCharacter.name} 的初始战斗卡组。`,
+        };
+
+        const title = this.add.text(panelX + 26, panelY + 20, titleMap[kind], {
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "28px",
+            color: "#2c2117",
+        }).setDepth(1402);
+        const subtitle = this.add.text(panelX + 26, panelY + 58, subtitleMap[kind], {
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "14px",
+            color: "#645240",
+        }).setDepth(1402);
+
+        const closeBtn = this.add
+            .rectangle(panelX + panelW - 30, panelY + 28, 32, 32, 0x5a4635, 0.96)
+            .setDepth(1402)
+            .setStrokeStyle(1, 0x9f8b72, 0.95)
+            .setInteractive({ useHandCursor: true });
+        const closeText = this.add.text(closeBtn.x, closeBtn.y - 1, "×", {
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "20px",
+            color: "#f6ebdb",
+        }).setOrigin(0.5).setDepth(1403);
+        closeBtn.on("pointerdown", () => this.closeDeckViewer());
+
+        this.deckViewerObjects.push(overlay, panel, title, subtitle, closeBtn, closeText);
+        this.renderDeckViewerCards(kind, panelX + 24, panelY + 96, panelW - 48, panelH - 120);
+    }
+
+    private renderDeckViewerCards(kind: DeckViewerKind, x: number, y: number, width: number, height: number) {
+        const cardConfigs = this.getDeckViewerCards(kind);
+        if (cardConfigs.length === 0) {
+            const emptyText = this.add.text(x + width / 2, y + height / 2, "当前没有可展示的卡牌。", {
+                fontFamily: UI_FONT_FAMILY,
+                fontSize: "18px",
+                color: "#675443",
+            }).setOrigin(0.5).setDepth(1402);
+            this.deckViewerObjects.push(emptyText);
+            return;
+        }
+
+        const cols = kind === "cycle" ? 4 : 5;
+        const rows = Math.max(1, Math.ceil(cardConfigs.length / cols));
+        const gapX = 14;
+        const gapY = 16;
+        const maxCardW = Math.floor((width - gapX * (cols - 1)) / cols);
+        const maxCardH = Math.floor((height - gapY * (rows - 1)) / rows);
+        const cardW = Math.max(102, Math.min(maxCardW, kind === "cycle" ? 150 : 122));
+        const cardH = Math.max(128, Math.min(maxCardH, kind === "cycle" ? 164 : 176));
+        const totalW = cols * cardW + (cols - 1) * gapX;
+        const startX = x + Math.max(0, Math.floor((width - totalW) / 2));
+
+        cardConfigs.forEach((config, idx) => {
+            const col = idx % cols;
+            const row = Math.floor(idx / cols);
+            const cardX = startX + col * (cardW + gapX);
+            const cardY = y + row * (cardH + gapY);
+            const objects = this.createDeckViewerCard(cardX, cardY, cardW, cardH, config);
+            this.deckViewerObjects.push(...objects);
+        });
+    }
+
+    private getDeckViewerCards(kind: DeckViewerKind): DeckViewerCardConfig[] {
+        if (kind === "cycle") {
+            const assignedById = new Map<CycleCardId, number[]>();
+            this.cycleSlots.forEach((slot, idx) => {
+                if (!slot.card) return;
+                const indexes = assignedById.get(slot.card.id) ?? [];
+                indexes.push(idx + 1);
+                assignedById.set(slot.card.id, indexes);
+            });
+
+            return STARTER_CYCLE_DECK.flatMap((card) =>
+                Array.from({ length: card.count }, (_unused, idx) => {
+                    const assignedRounds = assignedById.get(card.id) ?? [];
+                    const assignedRound = assignedRounds[idx];
+                    return {
+                        title: card.name,
+                        subtitle: "周期阶段卡",
+                        desc: card.desc,
+                        accent: 0x7d6040,
+                        accentLight: 0xe2d2b6,
+                        badgeText: `${idx + 1}`,
+                        footerText: assignedRound ? `已放入第${assignedRound}轮` : "点击加入周期",
+                        dimmed: Boolean(assignedRound),
+                        onClick: assignedRound || this.cultivationStarted ? undefined : () => this.assignCycleCardToNextSlot(card.id),
+                    };
+                }),
+            );
+        }
+
+        if (kind === "cultivation") {
+            const cards = this.cultivationStarted
+                ? [
+                    ...this.handCards.map((card) => ({ card, zone: "手牌" })),
+                    ...this.cultivationDeck.map((card) => ({ card, zone: "牌库" })),
+                    ...this.cultivationDiscard.map((card) => ({ card, zone: "弃牌" })),
+                ]
+                : STARTER_CULTIVATION_DECK.map((id) => ({ card: CULTIVATION_CARD_DEFS[id], zone: "初始" }));
+
+            return cards.map(({ card, zone }) => {
+                const style = CULTIVATION_ART_STYLE[card.id];
+                const costs = [`精${card.cost.energy}`];
+                if (card.cost.aura) costs.push(`灵${card.cost.aura}`);
+                if (card.cost.spirit) costs.push(`神${card.cost.spirit}`);
+                return {
+                    title: card.name,
+                    subtitle: `${card.realm} · ${costs.join(" / ")}`,
+                    desc: card.desc,
+                    accent: style.colorB,
+                    accentLight: style.colorA,
+                    badgeText: `${card.cost.energy}`,
+                    footerText: zone,
+                };
+            });
+        }
+
+        return this.currentCharacter.starterDeck.flatMap((starter) => {
+            const def = getCardDef(starter.id as CardId);
+            if (!def) {
+                return [
+                    {
+                        title: starter.name,
+                        subtitle: "战斗卡",
+                        desc: "卡牌定义缺失，请检查配置。",
+                        accent: 0x8a6b4e,
+                        accentLight: 0xe1cfb8,
+                        footerText: "配置异常",
+                    },
+                ];
+            }
+
+            return Array.from({ length: starter.count }, () => this.getBattleDeckViewerCard(def));
+        });
+    }
+
+    private getBattleDeckViewerCard(card: CardDef): DeckViewerCardConfig {
+        const isAttack = card.type === "attack";
+        return {
+            title: card.name,
+            subtitle: `${isAttack ? "攻击" : "技能"} · 灵力${card.cost}${card.target === "enemy" ? " · 单体" : ""}`,
+            desc: card.desc,
+            accent: isAttack ? 0xa94d3a : 0x4d6ea8,
+            accentLight: isAttack ? 0xf0c7be : 0xc8d8f0,
+            badgeText: `${card.cost}`,
+            footerText: isAttack ? "剑修战斗卡" : "基础防御术",
+        };
+    }
+
+    private createDeckViewerCard(x: number, y: number, w: number, h: number, config: DeckViewerCardConfig) {
+        const depth = 1402;
+        const bg = this.add
+            .rectangle(x, y, w, h, 0xf8f2e8, 0.99)
+            .setOrigin(0)
+            .setDepth(depth)
+            .setStrokeStyle(2, config.accent, 0.95);
+        const header = this.add
+            .rectangle(x + 8, y + 8, w - 16, 34, config.accentLight, 0.84)
+            .setOrigin(0)
+            .setDepth(depth + 1);
+        const badge = this.add.circle(x + 20, y + 24, 14, config.accent, 0.98).setDepth(depth + 2);
+        const badgeText = this.add.text(badge.x, badge.y, config.badgeText ?? "卡", {
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "12px",
+            color: "#fffaf0",
+        }).setOrigin(0.5).setDepth(depth + 3);
+        const title = this.add.text(x + w / 2, y + 24, config.title, {
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "18px",
+            color: "#2f2419",
+        }).setOrigin(0.5).setDepth(depth + 2);
+        const subtitle = this.add.text(x + 10, y + 50, config.subtitle, {
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "11px",
+            color: "#6b5744",
+        }).setDepth(depth + 2);
+        const divider = this.add.rectangle(x + 10, y + 72, w - 20, 2, config.accentLight, 0.95).setOrigin(0).setDepth(depth + 1);
+        const desc = this.add.text(x + 10, y + 84, config.desc, {
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "13px",
+            color: "#45362a",
+            wordWrap: { width: w - 20 },
+            lineSpacing: 4,
+        }).setDepth(depth + 2);
+        const footerBg = this.add
+            .rectangle(x + 8, y + h - 34, w - 16, 24, config.accentLight, 0.72)
+            .setOrigin(0)
+            .setDepth(depth + 1);
+        const footerText = this.add.text(x + w / 2, y + h - 22, config.footerText ?? "", {
+            fontFamily: UI_FONT_FAMILY,
+            fontSize: "12px",
+            color: "#4d3d2d",
+        }).setOrigin(0.5).setDepth(depth + 2);
+
+        const objects: Phaser.GameObjects.GameObject[] = [bg, header, badge, badgeText, title, subtitle, divider, desc, footerBg, footerText];
+        if (config.dimmed) {
+            bg.setAlpha(0.5);
+            header.setAlpha(0.5);
+            badge.setAlpha(0.5);
+            badgeText.setAlpha(0.5);
+            title.setAlpha(0.5);
+            subtitle.setAlpha(0.5);
+            divider.setAlpha(0.5);
+            desc.setAlpha(0.5);
+            footerBg.setAlpha(0.5);
+            footerText.setAlpha(0.5);
+        }
+
+        if (config.onClick) {
+            bg.setInteractive({ useHandCursor: true })
+                .on("pointerover", () => bg.setFillStyle(0xfcf7ef, 1))
+                .on("pointerout", () => bg.setFillStyle(0xf8f2e8, 0.99))
+                .on("pointerdown", () => config.onClick?.());
+        }
+
+        return objects;
     }
 
     private updateCycleStageText() {
