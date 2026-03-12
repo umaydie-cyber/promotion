@@ -230,6 +230,10 @@ export default class CultivationScene extends Phaser.Scene {
     private handCardViews: HandCardView[] = [];
     private selectedCardIndex: number | null = null;
     private draggingCard = false;
+    private pendingDragCardIndex: number | null = null;
+    private pendingDragStartX = 0;
+    private pendingDragStartY = 0;
+    private readonly handDragThreshold = 14;
     private isPlayingCard = false;
     private deckPileBg?: Phaser.GameObjects.Rectangle;
     private discardPileBg?: Phaser.GameObjects.Rectangle;
@@ -292,6 +296,8 @@ export default class CultivationScene extends Phaser.Scene {
         this.setupBattleDeckTipsArea();
         this.renderCycleCardsArea();
         this.renderCultivationArea();
+        this.input.on("pointermove", this.handleHandPointerMove, this);
+        this.input.on("pointerup", this.handleHandPointerUp, this);
 
         const cycleBtnX = this.scale.width - 176;
         const cycleBtnY = this.scale.height - 278;
@@ -726,6 +732,7 @@ export default class CultivationScene extends Phaser.Scene {
 
     private tryPlaySelectedCard() {
         if (this.selectedCardIndex === null || this.isPlayingCard) return;
+        this.clearHandPointerTracking();
         const idx = this.selectedCardIndex;
         const card = this.handCards[idx];
         const view = this.handCardViews.find((x) => x.index === idx);
@@ -781,6 +788,7 @@ export default class CultivationScene extends Phaser.Scene {
 
     private releaseSelectedCard(withTween = false) {
         if (this.selectedCardIndex === null) return;
+        this.clearHandPointerTracking();
         const view = this.handCardViews.find((x) => x.index === this.selectedCardIndex);
         if (!view) return;
         this.draggingCard = false;
@@ -799,6 +807,41 @@ export default class CultivationScene extends Phaser.Scene {
         }
         view.container.setDepth(10 + view.index);
         this.selectedCardIndex = null;
+    }
+
+    private handleHandPointerMove(pointer: Phaser.Input.Pointer) {
+        if (this.pendingDragCardIndex === null || !pointer.isDown || this.isPlayingCard) return;
+
+        const view = this.handCardViews.find((x) => x.index === this.pendingDragCardIndex);
+        if (!view) return;
+
+        const moved = Phaser.Math.Distance.Between(this.pendingDragStartX, this.pendingDragStartY, pointer.worldX, pointer.worldY);
+        if (!this.draggingCard && moved < this.handDragThreshold) return;
+
+        this.draggingCard = true;
+        this.tweens.killTweensOf(view.container);
+        view.container.setDepth(5000);
+        view.container.setScale(1.07);
+        view.container.x = pointer.worldX - view.bg.width / 2;
+        view.container.y = pointer.worldY - view.bg.height / 2;
+    }
+
+    private handleHandPointerUp(pointer: Phaser.Input.Pointer) {
+        if (this.pendingDragCardIndex === null) return;
+
+        const draggedIndex = this.pendingDragCardIndex;
+        this.clearHandPointerTracking();
+        if (this.selectedCardIndex !== draggedIndex) return;
+        if (!this.draggingCard) return;
+
+        this.draggingCard = false;
+        this.tryPlaySelectedCard();
+    }
+
+    private clearHandPointerTracking() {
+        this.pendingDragCardIndex = null;
+        this.pendingDragStartX = 0;
+        this.pendingDragStartY = 0;
     }
 
     private updateResourceText() {
@@ -967,43 +1010,8 @@ export default class CultivationScene extends Phaser.Scene {
                 container.setAlpha(0.78);
             }
 
-            bg.setInteractive({ draggable: true, useHandCursor: true });
-            bg.on("dragstart", () => {
-                if (this.isPlayingCard) return;
-                const currentCheck = this.getCostCheck(card);
-                if (!currentCheck.canAfford) {
-                    this.showResourceLackFeedback(card, { index: idx, def: card, container, bg, baseX: x, baseY: y }, currentCheck.missing);
-                    return;
-                }
-                this.releaseSelectedCard();
-                this.selectedCardIndex = idx;
-                this.draggingCard = true;
-                container.setDepth(5000);
-                this.tweens.add({
-                    targets: container,
-                    scale: 1.07,
-                    duration: 100,
-                    ease: "Quad.Out",
-                });
-            });
-
-            bg.on("drag", (_pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
-                if (this.selectedCardIndex !== idx || this.isPlayingCard) return;
-                container.x = dragX;
-                container.y = dragY;
-            });
-
-            bg.on("dragend", () => {
-                if (this.selectedCardIndex !== idx) return;
-                this.draggingCard = false;
-                if (container.y <= 440) {
-                    this.tryPlaySelectedCard();
-                    return;
-                }
-                this.releaseSelectedCard(true);
-            });
-
-            bg.on("pointerdown", () => {
+            bg.setInteractive({ useHandCursor: true });
+            bg.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
                 if (this.isPlayingCard) return;
 
                 const currentCheck = this.getCostCheck(card);
@@ -1020,6 +1028,9 @@ export default class CultivationScene extends Phaser.Scene {
 
                 this.releaseSelectedCard();
                 this.selectedCardIndex = idx;
+                this.pendingDragCardIndex = idx;
+                this.pendingDragStartX = pointer.worldX;
+                this.pendingDragStartY = pointer.worldY;
                 container.setDepth(5000);
                 this.tweens.add({
                     targets: container,
@@ -1166,6 +1177,7 @@ export default class CultivationScene extends Phaser.Scene {
         this.handCardViews = [];
         this.selectedCardIndex = null;
         this.draggingCard = false;
+        this.clearHandPointerTracking();
     }
 
     private updatePileText() {
