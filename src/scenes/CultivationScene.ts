@@ -443,7 +443,7 @@ export default class CultivationScene extends Phaser.Scene {
         }).setOrigin(0.5);
 
         this.add.line(0, 0, 120, 440, this.scale.width - 120, 440, 0x8d7356, 0.5).setLineWidth(2, 2);
-        this.add.text(this.scale.width / 2, 444, "将卡牌拖到上方后再次点击即可打出", {
+        this.add.text(this.scale.width / 2, 444, "将卡牌向上拖过出牌线，松手即可打出", {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "14px",
             color: "#6b5a45",
@@ -996,6 +996,11 @@ export default class CultivationScene extends Phaser.Scene {
             bg.on("dragend", () => {
                 if (this.selectedCardIndex !== idx) return;
                 this.draggingCard = false;
+                if (container.y <= 440) {
+                    this.tryPlaySelectedCard();
+                    return;
+                }
+                this.releaseSelectedCard(true);
             });
 
             bg.on("pointerdown", () => {

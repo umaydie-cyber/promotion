@@ -5,7 +5,7 @@ import EventScene from "./scenes/EventScene";
 import BattleScene from "./scenes/BattleScene";
 import CultivationScene from "./scenes/CultivationScene";
 
-new Phaser.Game({
+const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: "app",
     backgroundColor: "#111827",
@@ -17,3 +17,7 @@ new Phaser.Game({
     },
     scene: [BootScene, CharacterSelectScene, CultivationScene, EventScene, BattleScene],
 });
+
+if (typeof window !== "undefined") {
+    (window as typeof window & { __PROMOTION_GAME__?: Phaser.Game }).__PROMOTION_GAME__ = game;
+}
