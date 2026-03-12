@@ -759,6 +759,19 @@ export default class CultivationScene extends Phaser.Scene {
                 const played = this.playCultivationCard(card);
                 if (played) {
                     this.handCards.splice(idx, 1);
+                } else {
+                    this.tweens.killTweensOf(view.container);
+                    view.container.setDepth(10 + view.index);
+                    this.tweens.add({
+                        targets: view.container,
+                        x: view.baseX,
+                        y: view.baseY,
+                        scale: 1,
+                        angle: 0,
+                        alpha: 1,
+                        duration: 160,
+                        ease: "Quad.Out",
+                    });
                 }
                 this.selectedCardIndex = null;
                 this.isPlayingCard = false;
@@ -839,7 +852,7 @@ export default class CultivationScene extends Phaser.Scene {
 
         this.handCards.forEach((card, idx) => {
             const x = startX + idx * (cardW + gap);
-            const container = this.add.container(0, 0);
+            const container = this.add.container(x, y);
 
             const realmTier = (card.realm as RealmTier) ?? "炼气";
             const realmBadge = REALM_BADGE_STYLE[realmTier] ?? REALM_BADGE_STYLE.炼气;
@@ -852,25 +865,25 @@ export default class CultivationScene extends Phaser.Scene {
             const shellInset = Math.max(2, Math.floor(cardW * 0.03));
             const shellRadius = Math.max(8, Math.floor(cardW * 0.11));
             const cardRadius = Math.max(6, Math.floor(cardW * 0.085));
-            cardShell.fillRoundedRect(x - shellInset, y - shellInset, cardW + shellInset * 2, cardH + shellInset * 2, shellRadius);
+            cardShell.fillRoundedRect(-shellInset, -shellInset, cardW + shellInset * 2, cardH + shellInset * 2, shellRadius);
             cardShell.fillStyle(0xf3ebdc, 1);
-            cardShell.fillRoundedRect(x, y, cardW, cardH, cardRadius);
+            cardShell.fillRoundedRect(0, 0, cardW, cardH, cardRadius);
             cardShell.lineStyle(Math.max(2, Math.floor(cardW * 0.024)), 0x7f6f58, 0.95);
-            cardShell.strokeRoundedRect(x, y, cardW, cardH, cardRadius);
+            cardShell.strokeRoundedRect(0, 0, cardW, cardH, cardRadius);
 
             const marble = this.add.graphics();
             marble.lineStyle(Math.max(0.8, cardW * 0.008), 0xe6dbc7, 0.9);
             const veinCount = Math.max(4, Math.floor(cardH / 24));
-            const veinTop = y + cardH * 0.08;
-            const veinBottom = y + cardH * 0.9;
+            const veinTop = cardH * 0.08;
+            const veinBottom = cardH * 0.9;
             for (let i = 0; i < veinCount; i++) {
                 const offset = veinTop + ((veinBottom - veinTop) / Math.max(1, veinCount - 1)) * i;
-                marble.lineBetween(x + cardW * 0.06, offset, x + cardW * 0.93, offset + cardH * 0.02);
+                marble.lineBetween(cardW * 0.06, offset, cardW * 0.93, offset + cardH * 0.02);
             }
 
             const frame = this.add.graphics();
-            const frameX = x + cardW * 0.08;
-            const frameY = y + cardH * 0.15;
+            const frameX = cardW * 0.08;
+            const frameY = cardH * 0.15;
             const frameW = cardW * 0.84;
             const frameH = cardH * 0.38;
             frame.fillStyle(0xdbc9ad, 0.95);
@@ -879,27 +892,27 @@ export default class CultivationScene extends Phaser.Scene {
             frame.strokeRoundedRect(frameX, frameY, frameW, frameH, Math.max(6, cardW * 0.05));
 
             const artBg = this.add.graphics();
-            const artX = x + cardW * 0.12;
-            const artY = y + cardH * 0.18;
+            const artX = cardW * 0.12;
+            const artY = cardH * 0.18;
             const artW = cardW * 0.76;
             const artH = cardH * 0.31;
             artBg.fillGradientStyle(artStyle.colorA, artStyle.colorA, artStyle.colorB, artStyle.colorB, 1);
             artBg.fillRoundedRect(artX, artY, artW, artH, Math.max(6, cardW * 0.045));
 
-            const artName = this.add.text(x + cardW / 2, y + cardH * 0.23, card.name, {
+            const artName = this.add.text(cardW / 2, cardH * 0.23, card.name, {
                 fontFamily: UI_FONT_FAMILY,
                 fontSize: `${Math.max(10, Math.floor(cardW * 0.11))}px`,
                 color: "#2e2419",
             }).setOrigin(0.5, 0);
 
-            const artIcon = this.add.text(x + cardW / 2, y + cardH * 0.39, artStyle.icon, {
+            const artIcon = this.add.text(cardW / 2, cardH * 0.39, artStyle.icon, {
                 fontFamily: UI_FONT_FAMILY,
                 fontSize: `${Math.max(14, Math.floor(cardW * 0.18))}px`,
                 color: "#fff8eb",
             }).setOrigin(0.5);
 
             const badgeRadius = Math.max(8, Math.floor(cardW * 0.12));
-            const energyBadge = this.add.circle(x + cardW * 0.16, y + cardH * 0.11, badgeRadius, 0x2c74d1, 1);
+            const energyBadge = this.add.circle(cardW * 0.16, cardH * 0.11, badgeRadius, 0x2c74d1, 1);
             energyBadge.setStrokeStyle(Math.max(1.5, cardW * 0.018), 0xd8ebff, 1);
             const energyCostText = this.add.text(energyBadge.x, energyBadge.y, `${card.cost.energy}`, {
                 fontFamily: UI_FONT_FAMILY,
@@ -908,7 +921,7 @@ export default class CultivationScene extends Phaser.Scene {
                 fontStyle: "bold",
             }).setOrigin(0.5);
 
-            const spiritBadge = this.add.circle(x + cardW * 0.84, y + cardH * 0.11, badgeRadius, spiritCost > 0 ? 0x9454e6 : 0x69737f, 1);
+            const spiritBadge = this.add.circle(cardW * 0.84, cardH * 0.11, badgeRadius, spiritCost > 0 ? 0x9454e6 : 0x69737f, 1);
             spiritBadge.setStrokeStyle(Math.max(1.5, cardW * 0.018), spiritCost > 0 ? 0xe7d5ff : 0xc4ccd8, 1);
             const spiritCostText = this.add.text(spiritBadge.x, spiritBadge.y, `${spiritCost}`, {
                 fontFamily: UI_FONT_FAMILY,
@@ -917,10 +930,10 @@ export default class CultivationScene extends Phaser.Scene {
                 fontStyle: "bold",
             }).setOrigin(0.5);
 
-            const realmY = y + cardH * 0.58;
-            const realmEllipse = this.add.ellipse(x + cardW / 2, realmY, Math.max(42, cardW * 0.64), Math.max(16, cardH * 0.1), realmBadge.fill, 1);
+            const realmY = cardH * 0.58;
+            const realmEllipse = this.add.ellipse(cardW / 2, realmY, Math.max(42, cardW * 0.64), Math.max(16, cardH * 0.1), realmBadge.fill, 1);
             realmEllipse.setStrokeStyle(Math.max(1, cardW * 0.012), realmBadge.stroke, 1);
-            const realmText = this.add.text(x + cardW / 2, realmY, card.realm, {
+            const realmText = this.add.text(cardW / 2, realmY, card.realm, {
                 fontFamily: UI_FONT_FAMILY,
                 fontSize: `${Math.max(8, Math.floor(cardW * 0.085))}px`,
                 color: realmBadge.text,
@@ -928,8 +941,8 @@ export default class CultivationScene extends Phaser.Scene {
             }).setOrigin(0.5);
 
             const descPanel = this.add.graphics();
-            const descX = x + cardW * 0.1;
-            const descY = y + cardH * 0.66;
+            const descX = cardW * 0.1;
+            const descY = cardH * 0.66;
             const descW = cardW * 0.8;
             const descH = Math.max(24, cardH * 0.3);
             descPanel.fillStyle(0xe8dcc7, 0.96);
@@ -946,7 +959,7 @@ export default class CultivationScene extends Phaser.Scene {
                 maxLines: 5,
             });
 
-            const bg = this.add.rectangle(x, y, cardW, cardH, 0xffffff, 0.001).setOrigin(0);
+            const bg = this.add.rectangle(0, 0, cardW, cardH, 0xffffff, 0.001).setOrigin(0);
 
             if (!costCheck.canAfford) {
                 cardShell.setAlpha(0.82);
