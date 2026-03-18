@@ -421,29 +421,30 @@ export default class CultivationScene extends Phaser.Scene {
             lineSpacing: 10,
         });
 
-        const rightColumnX = 286;
+        const sideInfoX = this.scale.width - 314;
+        const sideInfoY = 184;
 
-        this.resourcesText = this.add.text(rightColumnX, 140, "", {
+        this.resourcesText = this.add.text(sideInfoX, sideInfoY, "", {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "17px",
             color: "#3d3125",
             lineSpacing: 10,
         });
 
-        this.meridianText = this.add.text(rightColumnX, 238, "", {
+        this.meridianText = this.add.text(sideInfoX, sideInfoY + 98, "", {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "16px",
             color: "#3d3125",
             lineSpacing: 6,
         });
 
-        this.cycleStageText = this.add.text(rightColumnX, 284, `周期：${this.cycleStageLabels[this.cycleStageIndex]}`, {
+        this.cycleStageText = this.add.text(sideInfoX, sideInfoY + 166, `周期：${this.cycleStageLabels[this.cycleStageIndex]}`, {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "17px",
             color: "#3d3125",
         });
 
-        this.cultivationRoundText = this.add.text(rightColumnX, 312, "修炼轮次：未开始", {
+        this.cultivationRoundText = this.add.text(sideInfoX, sideInfoY + 194, "修炼轮次：未开始", {
             fontFamily: UI_FONT_FAMILY,
             fontSize: "16px",
             color: "#3d3125",
