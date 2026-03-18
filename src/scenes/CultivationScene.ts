@@ -1291,6 +1291,8 @@ export default class CultivationScene extends Phaser.Scene {
 
     private createCycleDraftCardView(draft: CycleDraftCard, x: number, y: number, w: number, h: number) {
         const container = this.add.container(x, y).setDepth(30);
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
         const shadow = this.add.rectangle(4, 5, w, h, 0x2d2218, 0.18).setOrigin(0);
         const bg = this.add.rectangle(0, 0, w, h, 0xf8f2e8, 0.98).setOrigin(0);
         bg.setStrokeStyle(2, 0x7d6040, 0.9);
@@ -1325,14 +1327,16 @@ export default class CultivationScene extends Phaser.Scene {
         hitArea.on("pointerout", () => {
             bg.setFillStyle(0xf8f2e8, 0.98);
         });
-        hitArea.on("dragstart", () => {
+        hitArea.on("dragstart", (pointer: Phaser.Input.Pointer) => {
             if (this.cultivationStarted) return;
+            dragOffsetX = pointer.worldX - container.x;
+            dragOffsetY = pointer.worldY - container.y;
             container.setDepth(5000);
             container.setScale(1.04);
         });
-        hitArea.on("drag", (pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
+        hitArea.on("drag", (pointer: Phaser.Input.Pointer) => {
             if (this.cultivationStarted) return;
-            container.setPosition(dragX - w / 2, dragY - h / 2);
+            container.setPosition(pointer.worldX - dragOffsetX, pointer.worldY - dragOffsetY);
         });
         hitArea.on("dragend", (pointer: Phaser.Input.Pointer) => {
             if (this.cultivationStarted) {
